@@ -54,3 +54,6 @@ gtest_discover_tests(pack_test)
 # ---------- benchmarks ----------
 add_executable(gemm_bench bench/gemm_bench.cpp)
 target_link_libraries(gemm_bench PRIVATE sme_kernels benchmark::benchmark_main)
+
+add_executable(gemm_mt_bench bench/gemm_mt_bench.cpp)
+target_link_libraries(gemm_mt_bench PRIVATE sme_kernels benchmark::benchmark_main)

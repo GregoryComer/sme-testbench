@@ -38,7 +38,6 @@ void gemm_f32p_f32p_f32(
     const void* lhs_packed,
     const void* rhs_packed,
     float* out);
-
 // ---------- Reference ---------------------------------------------------------
 
 void gemm_f32_f32_f32_reference(

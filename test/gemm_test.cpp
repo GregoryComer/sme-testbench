@@ -88,7 +88,8 @@ INSTANTIATE_TEST_SUITE_P(
         GemmShape{32, 16, 2},
         GemmShape{16, 32, 2},
         GemmShape{32, 32, 2},
-        GemmShape{32, 13, 2}
+        GemmShape{32, 13, 2},
+        GemmShape{128, 128, 16384}
     ),
     [](const auto& info) {
       auto s = info.param;

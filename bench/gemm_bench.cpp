@@ -58,6 +58,8 @@ BENCHMARK(BM_gemm_f32p_f32p_f32)
     ->Args({128, 4096, 4096})
     ->Args({1024, 1024, 1024})
     ->Args({1024, 4096, 4096})
+    ->Args({128, 128, 16384})
+    ->Args({1024, 1024, 16384})
     ->Threads(1)
     ->Unit(benchmark::kMillisecond);
 
