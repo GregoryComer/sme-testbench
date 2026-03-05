@@ -5,6 +5,9 @@
 #ifndef PF_DIST
 #define PF_DIST 512
 #endif
+#ifndef PF_MODE
+#define PF_MODE SV_PLDL1KEEP
+#endif
 #ifndef USE_NT_RHS
 #define USE_NT_RHS 0
 #endif
@@ -44,7 +47,6 @@ void gemm_f32p_f32p_f32_kernel(
   const uint64_t vl = svcntw();
   const svbool_t pg = svptrue_b32();
 
-  // Main body: full 4×1 M-tiles.
   const uint64_t m_body = (p.M / (vl * 4)) * (vl * 4);
 
   for (uint64_t m = 0; m < m_body; m += vl * 4) {
@@ -60,8 +62,8 @@ void gemm_f32p_f32p_f32_kernel(
 
       for (uint64_t k = 0; k < p.K; k++) {
 #if PF_DIST > 0
-        svprfb(pg, lhs_data + PF_DIST * vl * 4, SV_PLDL1KEEP);
-        svprfb(pg, rhs_data + PF_DIST * vl, SV_PLDL1KEEP);
+        svprfb(pg, lhs_data + PF_DIST * vl * 4, PF_MODE);
+        svprfb(pg, rhs_data + PF_DIST * vl, PF_MODE);
 #endif
 
         svfloat32_t lhs_col0 = svld1_f32(pg, lhs_data);

@@ -6,30 +6,28 @@
 
 namespace sme {
 
-// Returns the packed buffer size in bytes.
+// ---------- f32 --------------------------------------------------------------
+
 size_t packed_size_bytes_f32(size_t rows, size_t cols, size_t tile_r, size_t tile_c);
 size_t packed_size_bytes_f32(size_t rows, size_t cols, const PackingParams& params);
 
-// Generic tile packing routine.
-//
-// Template Args:
-//   TransposeInner - transpose elements within each tile
-//   TransposeOuter - traverse tiles in transposed order
-//
-// Args:
-//   data    - float[rows, cols], row-major
-//   rows    - row count
-//   cols    - col count
-//   tile_r  - rows per tile
-//   tile_c  - cols per tile
-//   out     - output buffer (at least packed_size_bytes_f32 bytes)
 template <bool TransposeInner, bool TransposeOuter>
 void pack_f32(const float* data, size_t rows, size_t cols, size_t tile_r,
               size_t tile_c, void* out);
 
-// Dynamic dispatch wrapper that selects the template instantiation based on
-// the transpose flags in PackingParams.
 void pack_f32(const float* data, size_t rows, size_t cols,
+              const PackingParams& params, void* out);
+
+// ---------- f16 --------------------------------------------------------------
+
+size_t packed_size_bytes_f16(size_t rows, size_t cols, size_t tile_r, size_t tile_c);
+size_t packed_size_bytes_f16(size_t rows, size_t cols, const PackingParams& params);
+
+template <bool TransposeInner, bool TransposeOuter>
+void pack_f16(const _Float16* data, size_t rows, size_t cols, size_t tile_r,
+              size_t tile_c, void* out);
+
+void pack_f16(const _Float16* data, size_t rows, size_t cols,
               const PackingParams& params, void* out);
 
 }  // namespace sme

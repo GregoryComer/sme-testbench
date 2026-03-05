@@ -10,14 +10,17 @@ add_library(sme_kernels
   src/pack.cpp
   src/gemm.cpp
   src/gemm_f32_sme.cpp
+  src/gemm_f16_sme.cpp
   src/reference.cpp
 )
 target_include_directories(sme_kernels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-# SME flags only on the kernel file. Non-streaming code must not see +sve
+# SME flags only on kernel files. Non-streaming code must not see +sve
 # since Apple Silicon only supports SVE in streaming mode.
-set_source_files_properties(src/gemm_f32_sme.cpp PROPERTIES
-  COMPILE_OPTIONS "-march=armv8-a+sme"
+set_source_files_properties(
+  src/gemm_f32_sme.cpp
+  src/gemm_f16_sme.cpp
+  PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
 )
 
 # ---------- dependencies ----------
@@ -44,16 +47,29 @@ enable_testing()
 add_executable(gemm_test test/gemm_test.cpp)
 target_link_libraries(gemm_test PRIVATE sme_kernels GTest::gtest_main)
 
+add_executable(gemm_f16_test test/gemm_f16_test.cpp)
+target_link_libraries(gemm_f16_test PRIVATE sme_kernels GTest::gtest_main)
+
 add_executable(pack_test test/pack_test.cpp)
 target_link_libraries(pack_test PRIVATE sme_kernels GTest::gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(gemm_test)
+gtest_discover_tests(gemm_f16_test)
 gtest_discover_tests(pack_test)
 
 # ---------- benchmarks ----------
 add_executable(gemm_bench bench/gemm_bench.cpp)
 target_link_libraries(gemm_bench PRIVATE sme_kernels benchmark::benchmark_main)
 
+add_executable(gemm_f16_bench bench/gemm_f16_bench.cpp)
+target_link_libraries(gemm_f16_bench PRIVATE sme_kernels benchmark::benchmark_main)
+
 add_executable(gemm_mt_bench bench/gemm_mt_bench.cpp)
 target_link_libraries(gemm_mt_bench PRIVATE sme_kernels benchmark::benchmark_main)
+
+add_executable(mopa_peak_bench bench/mopa_peak_bench.cpp)
+set_source_files_properties(bench/mopa_peak_bench.cpp
+  PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
+)
+target_link_libraries(mopa_peak_bench PRIVATE sme_kernels)
