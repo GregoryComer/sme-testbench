@@ -58,4 +58,20 @@ void gemm_f16_f16_f16_reference(
     const _Float16* rhs,
     _Float16* output);
 
+// ---------- bf16 -------------------------------------------------------------
+
+GemmPackingParams gemm_bf16_packing_params();
+
+void gemm_bf16p_bf16p_bf16(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    __bf16* out);
+
+void gemm_bf16_bf16_bf16_reference(
+    const GemmParams& p,
+    const __bf16* lhs,
+    const __bf16* rhs,
+    __bf16* output);
+
 }  // namespace sme

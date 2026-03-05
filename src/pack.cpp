@@ -144,4 +144,46 @@ void pack_f16(const _Float16* data, size_t rows, size_t cols,
     pack_f16<false, false>(data, rows, cols, params.tile_rows, params.tile_cols, out);
 }
 
+// ---------- bf16 -------------------------------------------------------------
+
+size_t packed_size_bytes_bf16(size_t rows, size_t cols, size_t tile_r,
+                             size_t tile_c) {
+  return detail::packed_size_bytes<__bf16>(rows, cols, tile_r, tile_c);
+}
+
+size_t packed_size_bytes_bf16(size_t rows, size_t cols,
+                             const PackingParams& params) {
+  return packed_size_bytes_bf16(rows, cols, params.tile_rows, params.tile_cols);
+}
+
+template <bool TransposeInner, bool TransposeOuter>
+void pack_bf16(const __bf16* data, size_t rows, size_t cols, size_t tile_r,
+              size_t tile_c, void* out) {
+  detail::pack<__bf16, TransposeInner, TransposeOuter>(data, rows, cols,
+                                                          tile_r, tile_c, out);
+}
+
+template void pack_bf16<false, false>(const __bf16*, size_t, size_t, size_t,
+                                     size_t, void*);
+template void pack_bf16<false, true>(const __bf16*, size_t, size_t, size_t,
+                                    size_t, void*);
+template void pack_bf16<true, false>(const __bf16*, size_t, size_t, size_t,
+                                    size_t, void*);
+template void pack_bf16<true, true>(const __bf16*, size_t, size_t, size_t,
+                                   size_t, void*);
+
+void pack_bf16(const __bf16* data, size_t rows, size_t cols,
+              const PackingParams& params, void* out) {
+  bool ti = params.transpose_inner;
+  bool to = params.transpose_outer;
+  if (ti && to)
+    pack_bf16<true, true>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+  else if (ti)
+    pack_bf16<true, false>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+  else if (to)
+    pack_bf16<false, true>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+  else
+    pack_bf16<false, false>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+}
+
 }  // namespace sme

@@ -5,9 +5,6 @@
 #ifndef PF_DIST
 #define PF_DIST 512
 #endif
-#ifndef PF_MODE
-#define PF_MODE SV_PLDL1KEEP
-#endif
 #ifndef USE_NT_RHS
 #define USE_NT_RHS 0
 #endif
@@ -28,9 +25,9 @@ GemmPackingParams gemm_f32_packing_params() {
   size_t svl = svl_f32();
   return {
       .lhs = {.tile_rows = svl * 4, .tile_cols = 1,
-              .transpose_inner = true, .transpose_outer = false},
+              .transpose_inner = false, .transpose_outer = false},
       .rhs = {.tile_rows = 1, .tile_cols = svl,
-              .transpose_inner = false, .transpose_outer = true},
+              .transpose_inner = true, .transpose_outer = true},
   };
 }
 
@@ -38,7 +35,7 @@ GemmPackingParams gemm_f32_packing_params() {
 //   ZA0=(m0,n0), ZA1=(m1,n0), ZA2=(m2,n0), ZA3=(m3,n0).
 // Each K step: 4 LHS loads + 1 RHS load = 5 loads for 4 FMOPA.
 // M epilogue handles the remainder with a 1×1 predicated loop.
-// Assumes N is a multiple of svcntw().
+// N-tail is handled via a store predicate.
 void gemm_f32p_f32p_f32_kernel(
     const GemmParams& p, const void* lhs_packed, const void* rhs_packed,
     float* out) __arm_streaming __arm_inout("za") {
@@ -62,8 +59,8 @@ void gemm_f32p_f32p_f32_kernel(
 
       for (uint64_t k = 0; k < p.K; k++) {
 #if PF_DIST > 0
-        svprfb(pg, lhs_data + PF_DIST * vl * 4, PF_MODE);
-        svprfb(pg, rhs_data + PF_DIST * vl, PF_MODE);
+        svprfb(pg, lhs_data + PF_DIST * vl * 4, SV_PLDL1KEEP);
+        svprfb(pg, rhs_data + PF_DIST * vl, SV_PLDL1KEEP);
 #endif
 
         svfloat32_t lhs_col0 = svld1_f32(pg, lhs_data);
@@ -85,17 +82,19 @@ void gemm_f32p_f32p_f32_kernel(
         rhs_data += vl;
       }
 
-      // Store results.
+      // Store results.  Use an N-tail predicate so that rows narrower
+      // than vl do not write past the end of each output row.
+      const svbool_t n_pg = svwhilelt_b32(n, (uint64_t)p.N);
       float* out0 = out + m * p.N + n;
       float* out1 = out + (m + vl) * p.N + n;
       float* out2 = out + (m + vl * 2) * p.N + n;
       float* out3 = out + (m + vl * 3) * p.N + n;
 
       for (uint32_t i = 0; i < vl; i++) {
-        svst1_hor_za32(0, i, pg, out0 + i * p.N);
-        svst1_hor_za32(1, i, pg, out1 + i * p.N);
-        svst1_hor_za32(2, i, pg, out2 + i * p.N);
-        svst1_hor_za32(3, i, pg, out3 + i * p.N);
+        svst1_hor_za32(0, i, n_pg, out0 + i * p.N);
+        svst1_hor_za32(1, i, n_pg, out1 + i * p.N);
+        svst1_hor_za32(2, i, n_pg, out2 + i * p.N);
+        svst1_hor_za32(3, i, n_pg, out3 + i * p.N);
       }
     }
   }
@@ -130,9 +129,10 @@ void gemm_f32p_f32p_f32_kernel(
           rhs_data += vl;
         }
 
+        const svbool_t n_pg = svwhilelt_b32(n, (uint64_t)p.N);
         float* out_ptr = out + m_row * p.N + n;
         for (uint32_t i = 0; i < rows; i++) {
-          svst1_hor_za32(0, i, pg, out_ptr + i * p.N);
+          svst1_hor_za32(0, i, n_pg, out_ptr + i * p.N);
         }
       }
     }

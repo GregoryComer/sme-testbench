@@ -27,4 +27,17 @@ void gemm_f16_f16_f16_reference(const GemmParams& p, const _Float16* lhs,
   }
 }
 
+void gemm_bf16_bf16_bf16_reference(const GemmParams& p, const __bf16* lhs,
+                                const __bf16* rhs, __bf16* output) {
+  for (size_t m = 0; m < p.M; ++m) {
+    for (size_t n = 0; n < p.N; ++n) {
+      float acc = 0.0f;
+      for (size_t k = 0; k < p.K; ++k)
+        acc += static_cast<float>(lhs[m * p.K + k]) *
+               static_cast<float>(rhs[k * p.N + n]);
+      output[m * p.N + n] = static_cast<__bf16>(acc);
+    }
+  }
+}
+
 }  // namespace sme
