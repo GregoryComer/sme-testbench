@@ -1,16 +1,17 @@
 #pragma once
 
-// Internal header for the bf16 SME kernel. Not part of the public API.
+// Internal header for the 2x2 qd8xqc8w->f32 SME kernel. Not part of the public API.
 // Compiled with -march=armv8-a+sme; do not include from non-SME TUs.
 
 #include "gemm.h"
 
 namespace sme {
 
-void gemm_bf16p_bf16p_bf16_kernel(
+void gemm_qd8p_qc8wp_f32_2vlx2vl_kernel(
     const GemmParams& p,
     const void* lhs_packed,
     const void* rhs_packed,
-    __bf16* out) __arm_streaming __arm_inout("za");
+    float* out,
+    const QuantParams& qp) __arm_streaming __arm_inout("za");
 
 }  // namespace sme

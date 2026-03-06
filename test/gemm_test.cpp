@@ -40,12 +40,14 @@ struct GemmShape {
   size_t M, N, K;
 };
 
-class GemmF32Test : public ::testing::TestWithParam<GemmShape> {};
+// --- 4vlxvl (4x1) -----------------------------------------------------------
 
-TEST_P(GemmF32Test, MatchesReference) {
+class GemmF32_4vlxvlTest : public ::testing::TestWithParam<GemmShape> {};
+
+TEST_P(GemmF32_4vlxvlTest, MatchesReference) {
   auto [M, N, K] = GetParam();
 
-  auto pack = sme::gemm_f32_packing_params();
+  auto pack = sme::gemm_f32_4vlxvl_packing_params();
 
   std::vector<float> A(M * K), B(K * N);
   auto lhs_packed = std::make_unique<char[]>(
@@ -66,7 +68,7 @@ TEST_P(GemmF32Test, MatchesReference) {
 
   sme::pack_f32(A.data(), M, K, pack.lhs, lhs_packed.get());
   sme::pack_f32(B.data(), K, N, pack.rhs, rhs_packed.get());
-  sme::gemm_f32p_f32p_f32(p, lhs_packed.get(), rhs_packed.get(), C.data());
+  sme::gemm_f32p_f32p_f32_4vlxvl(p, lhs_packed.get(), rhs_packed.get(), C.data());
   sme::gemm_f32_f32_f32_reference(p, A.data(), B.data(), C_ref.data());
 
   expect_near(C.data(), C_ref.data(), M * N, K);
@@ -74,7 +76,7 @@ TEST_P(GemmF32Test, MatchesReference) {
 
 // Small shapes for fast CI + edge-case coverage.
 INSTANTIATE_TEST_SUITE_P(
-    Small, GemmF32Test,
+    Small, GemmF32_4vlxvlTest,
     ::testing::Values(
         GemmShape{1, 1, 1},
         GemmShape{1, 16, 16},
@@ -89,6 +91,66 @@ INSTANTIATE_TEST_SUITE_P(
         GemmShape{16, 32, 2},
         GemmShape{32, 32, 2},
         GemmShape{32, 13, 2},
+        GemmShape{33, 17, 5},
+        GemmShape{128, 128, 16384}
+    ),
+    [](const auto& info) {
+      auto s = info.param;
+      return std::to_string(s.M) + "x" + std::to_string(s.K) + "x" +
+             std::to_string(s.N);
+    });
+
+// --- 2vlx2vl (2x2) -----------------------------------------------------------
+
+class GemmF32_2vlx2vlTest : public ::testing::TestWithParam<GemmShape> {};
+
+TEST_P(GemmF32_2vlx2vlTest, MatchesReference) {
+  auto [M, N, K] = GetParam();
+
+  auto pack = sme::gemm_f32_2vlx2vl_packing_params();
+
+  std::vector<float> A(M * K), B(K * N);
+  auto lhs_packed = std::make_unique<char[]>(
+      sme::packed_size_bytes_f32(M, K, pack.lhs));
+  auto rhs_packed = std::make_unique<char[]>(
+      sme::packed_size_bytes_f32(K, N, pack.rhs));
+  std::vector<float> C(M * N, 0.0f), C_ref(M * N, 0.0f);
+
+  if constexpr (kUseSequentialData) {
+    fill_sequential(A.data(), A.size(), 1.0f);
+    fill_sequential(B.data(), B.size(), 1.0f);
+  } else {
+    fill_random(A.data(), A.size(), /*seed=*/42);
+    fill_random(B.data(), B.size(), /*seed=*/123);
+  }
+
+  sme::GemmParams p{M, N, K};
+
+  sme::pack_f32(A.data(), M, K, pack.lhs, lhs_packed.get());
+  sme::pack_f32(B.data(), K, N, pack.rhs, rhs_packed.get());
+  sme::gemm_f32p_f32p_f32_2vlx2vl(p, lhs_packed.get(), rhs_packed.get(), C.data());
+  sme::gemm_f32_f32_f32_reference(p, A.data(), B.data(), C_ref.data());
+
+  expect_near(C.data(), C_ref.data(), M * N, K);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Small, GemmF32_2vlx2vlTest,
+    ::testing::Values(
+        GemmShape{1, 1, 1},
+        GemmShape{1, 16, 16},
+        GemmShape{4, 4, 4},
+        GemmShape{7, 13, 5},
+        GemmShape{16, 16, 1},
+        GemmShape{16, 16, 16},
+        GemmShape{1, 1024, 1024},
+        GemmShape{16, 1024, 1024},
+        GemmShape{128, 128, 128},
+        GemmShape{32, 16, 2},
+        GemmShape{16, 32, 2},
+        GemmShape{32, 32, 2},
+        GemmShape{32, 13, 2},
+        GemmShape{33, 17, 5},
         GemmShape{128, 128, 16384}
     ),
     [](const auto& info) {

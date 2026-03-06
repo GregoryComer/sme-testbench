@@ -9,10 +9,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_library(sme_kernels
   src/pack.cpp
   src/gemm.cpp
-  src/gemm_f32_sme.cpp
-  src/gemm_f16_sme.cpp
-  src/gemm_bf16_sme.cpp
-  src/gemm_qd8_qc8w_sme.cpp
+  src/gemm_f32_4vlxvl_sme.cpp
+  src/gemm_f32_2vlx2vl_sme.cpp
+  src/gemm_f16_4vlxvl_sme.cpp
+  src/gemm_f16_2vlx2vl_sme.cpp
+  src/gemm_bf16_4vlxvl_sme.cpp
+  src/gemm_bf16_2vlx2vl_sme.cpp
+  src/gemm_qd8_qc8w_4vlxvl_sme.cpp
+  src/gemm_qd8_qc8w_2vlx2vl_sme.cpp
+  src/gemm_qd8_qc4w_4vlxvl_sme.cpp
+  src/gemm_qd8_qb4w_4vlxvl_sme.cpp
   src/reference.cpp
 )
 target_include_directories(sme_kernels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -20,10 +26,16 @@ target_include_directories(sme_kernels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # SME flags only on kernel files. Non-streaming code must not see +sve
 # since Apple Silicon only supports SVE in streaming mode.
 set_source_files_properties(
-  src/gemm_f32_sme.cpp
-  src/gemm_f16_sme.cpp
-  src/gemm_bf16_sme.cpp
-  src/gemm_qd8_qc8w_sme.cpp
+  src/gemm_f32_4vlxvl_sme.cpp
+  src/gemm_f32_2vlx2vl_sme.cpp
+  src/gemm_f16_4vlxvl_sme.cpp
+  src/gemm_f16_2vlx2vl_sme.cpp
+  src/gemm_bf16_4vlxvl_sme.cpp
+  src/gemm_bf16_2vlx2vl_sme.cpp
+  src/gemm_qd8_qc8w_4vlxvl_sme.cpp
+  src/gemm_qd8_qc8w_2vlx2vl_sme.cpp
+  src/gemm_qd8_qc4w_4vlxvl_sme.cpp
+  src/gemm_qd8_qb4w_4vlxvl_sme.cpp
   PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
 )
 
@@ -63,11 +75,19 @@ target_link_libraries(gemm_bf16_test PRIVATE sme_kernels GTest::gtest_main)
 add_executable(gemm_qd8_qc8w_test test/gemm_qd8_qc8w_test.cpp)
 target_link_libraries(gemm_qd8_qc8w_test PRIVATE sme_kernels GTest::gtest_main)
 
+add_executable(gemm_qd8_qc4w_test test/gemm_qd8_qc4w_test.cpp)
+target_link_libraries(gemm_qd8_qc4w_test PRIVATE sme_kernels GTest::gtest_main)
+
+add_executable(gemm_qd8_qb4w_test test/gemm_qd8_qb4w_test.cpp)
+target_link_libraries(gemm_qd8_qb4w_test PRIVATE sme_kernels GTest::gtest_main)
+
 include(GoogleTest)
 gtest_discover_tests(gemm_test)
 gtest_discover_tests(gemm_f16_test)
 gtest_discover_tests(gemm_bf16_test)
 gtest_discover_tests(gemm_qd8_qc8w_test)
+gtest_discover_tests(gemm_qd8_qc4w_test)
+gtest_discover_tests(gemm_qd8_qb4w_test)
 gtest_discover_tests(pack_test)
 
 # ---------- benchmarks ----------
@@ -83,6 +103,12 @@ target_link_libraries(gemm_bf16_bench PRIVATE sme_kernels benchmark::benchmark_m
 add_executable(gemm_qd8_qc8w_bench bench/gemm_qd8_qc8w_bench.cpp)
 target_link_libraries(gemm_qd8_qc8w_bench PRIVATE sme_kernels benchmark::benchmark_main)
 
+add_executable(gemm_qd8_qc4w_bench bench/gemm_qd8_qc4w_bench.cpp)
+target_link_libraries(gemm_qd8_qc4w_bench PRIVATE sme_kernels benchmark::benchmark_main)
+
+add_executable(gemm_qd8_qb4w_bench bench/gemm_qd8_qb4w_bench.cpp)
+target_link_libraries(gemm_qd8_qb4w_bench PRIVATE sme_kernels benchmark::benchmark_main)
+
 add_executable(gemm_mt_bench bench/gemm_mt_bench.cpp)
 target_link_libraries(gemm_mt_bench PRIVATE sme_kernels benchmark::benchmark_main)
 
@@ -91,6 +117,24 @@ set_source_files_properties(bench/qd8_qc8w_pf_sweep.cpp
   PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
 )
 target_link_libraries(qd8_qc8w_pf_sweep PRIVATE sme_kernels benchmark::benchmark_main)
+
+add_executable(tile_2x2_bench bench/tile_2x2_bench.cpp)
+set_source_files_properties(bench/tile_2x2_bench.cpp
+  PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
+)
+target_link_libraries(tile_2x2_bench PRIVATE sme_kernels benchmark::benchmark_main)
+
+add_executable(qd8_qc8w_2x2_bench bench/qd8_qc8w_2x2_bench.cpp)
+set_source_files_properties(bench/qd8_qc8w_2x2_bench.cpp
+  PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
+)
+target_link_libraries(qd8_qc8w_2x2_bench PRIVATE sme_kernels benchmark::benchmark_main)
+
+add_executable(f32_pf_sweep bench/f32_pf_sweep.cpp)
+set_source_files_properties(bench/f32_pf_sweep.cpp
+  PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
+)
+target_link_libraries(f32_pf_sweep PRIVATE sme_kernels benchmark::benchmark_main)
 
 add_executable(mopa_peak_bench bench/mopa_peak_bench.cpp)
 set_source_files_properties(bench/mopa_peak_bench.cpp

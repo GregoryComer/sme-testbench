@@ -24,14 +24,14 @@ void fill_random_f32(float* buf, size_t n, unsigned seed) {
   for (size_t i = 0; i < n; ++i) buf[i] = dist(rng);
 }
 
-// --- Single-threaded benchmark -----------------------------------------------
+// --- 4vlxvl (4x1) single-threaded -------------------------------------------
 
-void BM_gemm_qd8p_qc8wp_f32(benchmark::State& state) {
+void BM_gemm_qd8p_qc8wp_f32_4vlxvl(benchmark::State& state) {
   const size_t M = static_cast<size_t>(state.range(0));
   const size_t N = static_cast<size_t>(state.range(1));
   const size_t K = static_cast<size_t>(state.range(2));
 
-  auto pack = sme::gemm_qd8_qc8w_packing_params();
+  auto pack = sme::gemm_qd8_qc8w_4vlxvl_packing_params();
 
   std::vector<int8_t> A(M * K);
   std::vector<int8_t> B(K * N);
@@ -55,7 +55,7 @@ void BM_gemm_qd8p_qc8wp_f32(benchmark::State& state) {
   sme::pack_s8(B.data(), K, N, pack.rhs, rhs_packed.get());
 
   for (auto _ : state) {
-    sme::gemm_qd8p_qc8wp_f32(p, lhs_packed.get(), rhs_packed.get(), C.data(), qp);
+    sme::gemm_qd8p_qc8wp_f32_4vlxvl(p, lhs_packed.get(), rhs_packed.get(), C.data(), qp);
     benchmark::DoNotOptimize(C.data());
     benchmark::ClobberMemory();
   }
@@ -66,20 +66,73 @@ void BM_gemm_qd8p_qc8wp_f32(benchmark::State& state) {
       benchmark::Counter(flops, benchmark::Counter::kIsIterationInvariantRate);
 }
 
-BENCHMARK(BM_gemm_qd8p_qc8wp_f32)
+BENCHMARK(BM_gemm_qd8p_qc8wp_f32_4vlxvl)
     ->Args({128, 128, 128})
     ->Args({1024, 1024, 1024})
     ->Args({4096, 4096, 4096})
     ->Args({128, 128, 16384})
     ->Args({1024, 4096, 4096})
+    ->Args({1024, 4096*4, 4096})
+    ->Args({4096, 4096, 128000})
     ->Unit(benchmark::kMillisecond);
 
-// --- Multithreaded benchmark (M-split) ---------------------------------------
+// --- 2vlx2vl (2x2) single-threaded -------------------------------------------
+
+void BM_gemm_qd8p_qc8wp_f32_2vlx2vl(benchmark::State& state) {
+  const size_t M = static_cast<size_t>(state.range(0));
+  const size_t N = static_cast<size_t>(state.range(1));
+  const size_t K = static_cast<size_t>(state.range(2));
+
+  auto pack = sme::gemm_qd8_qc8w_2vlx2vl_packing_params();
+
+  std::vector<int8_t> A(M * K);
+  std::vector<int8_t> B(K * N);
+  std::vector<float> C(M * N);
+  auto lhs_packed = std::make_unique<char[]>(
+      sme::packed_size_bytes_s8(M, K, pack.lhs));
+  auto rhs_packed = std::make_unique<char[]>(
+      sme::packed_size_bytes_s8(K, N, pack.rhs));
+  fill_random_s8(A.data(), A.size(), 42);
+  fill_random_s8(B.data(), B.size(), 123);
+
+  std::vector<float> w_scales(N);
+  fill_random_f32(w_scales.data(), N, 77);
+
+  std::vector<float> w_ksums(N);
+  sme::compute_ksums_s8(B.data(), K, N, w_scales.data(), w_ksums.data());
+
+  sme::GemmParams p{M, N, K};
+  sme::QuantParams qp{0, 0.05f, w_scales.data(), w_ksums.data()};
+  sme::pack_s8(A.data(), M, K, pack.lhs, lhs_packed.get());
+  sme::pack_s8(B.data(), K, N, pack.rhs, rhs_packed.get());
+
+  for (auto _ : state) {
+    sme::gemm_qd8p_qc8wp_f32_2vlx2vl(p, lhs_packed.get(), rhs_packed.get(), C.data(), qp);
+    benchmark::DoNotOptimize(C.data());
+    benchmark::ClobberMemory();
+  }
+
+  double flops = 2.0 * static_cast<double>(M) * static_cast<double>(N) *
+                 static_cast<double>(K);
+  state.counters["FLOP/s"] =
+      benchmark::Counter(flops, benchmark::Counter::kIsIterationInvariantRate);
+}
+
+BENCHMARK(BM_gemm_qd8p_qc8wp_f32_2vlx2vl)
+    ->Args({128, 128, 128})
+    ->Args({1024, 1024, 1024})
+    ->Args({4096, 4096, 4096})
+    ->Args({128, 128, 16384})
+    ->Args({1024, 4096, 4096})
+    ->Args({1024, 4096*4, 4096})
+    ->Unit(benchmark::kMillisecond);
+
+// --- Multithreaded benchmark (M-split, 4vlxvl) ------------------------------
 
 void gemm_qd8p_qc8wp_f32_mt(const sme::GemmParams& p, const sme::QuantParams& qp,
                            const void* lhs_packed, const void* rhs_packed,
                            float* out, size_t num_threads) {
-  auto pack = sme::gemm_qd8_qc8w_packing_params();
+  auto pack = sme::gemm_qd8_qc8w_4vlxvl_packing_params();
   const size_t m_tile = pack.lhs.tile_rows;
 
   const size_t m_tiles = (p.M + m_tile - 1) / m_tile;
@@ -103,7 +156,7 @@ void gemm_qd8p_qc8wp_f32_mt(const sme::GemmParams& p, const sme::QuantParams& qp
 
     threads.emplace_back([=] {
       sme::GemmParams sp{m_count, p.N, p.K};
-      sme::gemm_qd8p_qc8wp_f32(sp, lhs_slice, rhs_packed, out_slice, qp);
+      sme::gemm_qd8p_qc8wp_f32_4vlxvl(sp, lhs_slice, rhs_packed, out_slice, qp);
     });
   }
 
@@ -116,7 +169,7 @@ void BM_gemm_qd8p_qc8wp_f32_mt(benchmark::State& state) {
   const size_t K = static_cast<size_t>(state.range(2));
   const size_t num_threads = static_cast<size_t>(state.range(3));
 
-  auto pack = sme::gemm_qd8_qc8w_packing_params();
+  auto pack = sme::gemm_qd8_qc8w_4vlxvl_packing_params();
 
   std::vector<int8_t> A(M * K);
   std::vector<int8_t> B(K * N);

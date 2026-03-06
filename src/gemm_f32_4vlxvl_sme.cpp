@@ -1,4 +1,4 @@
-#include "gemm_f32_sme.h"
+#include "gemm_f32_4vlxvl_sme.h"
 
 #include <arm_sme.h>
 
@@ -17,11 +17,7 @@ static size_t svl_f32() {
   return svl_bytes / sizeof(float);
 }
 
-size_t gemm_f32_tile_m() { return svl_f32(); }
-size_t gemm_f32_tile_n() { return svl_f32(); }
-size_t gemm_f32_tile_k() { return 1; }
-
-GemmPackingParams gemm_f32_packing_params() {
+GemmPackingParams gemm_f32_4vlxvl_packing_params() {
   size_t svl = svl_f32();
   return {
       .lhs = {.tile_rows = svl * 4, .tile_cols = 1,
@@ -36,7 +32,7 @@ GemmPackingParams gemm_f32_packing_params() {
 // Each K step: 4 LHS loads + 1 RHS load = 5 loads for 4 FMOPA.
 // M epilogue handles the remainder with a 1×1 predicated loop.
 // N-tail is handled via a store predicate.
-void gemm_f32p_f32p_f32_kernel(
+void gemm_f32p_f32p_f32_4vlxvl_kernel(
     const GemmParams& p, const void* lhs_packed, const void* rhs_packed,
     float* out) __arm_streaming __arm_inout("za") {
   const auto* lhs_base = static_cast<const float*>(lhs_packed);

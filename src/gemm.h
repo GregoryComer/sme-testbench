@@ -25,13 +25,16 @@ struct GemmPackingParams {
 
 // ---------- f32 --------------------------------------------------------------
 
-GemmPackingParams gemm_f32_packing_params();
+GemmPackingParams gemm_f32_4vlxvl_packing_params();
+GemmPackingParams gemm_f32_2vlx2vl_packing_params();
 
-size_t gemm_f32_tile_m();
-size_t gemm_f32_tile_n();
-size_t gemm_f32_tile_k();
+void gemm_f32p_f32p_f32_4vlxvl(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    float* out);
 
-void gemm_f32p_f32p_f32(
+void gemm_f32p_f32p_f32_2vlx2vl(
     const GemmParams& p,
     const void* lhs_packed,
     const void* rhs_packed,
@@ -45,9 +48,16 @@ void gemm_f32_f32_f32_reference(
 
 // ---------- f16 --------------------------------------------------------------
 
-GemmPackingParams gemm_f16_packing_params();
+GemmPackingParams gemm_f16_4vlxvl_packing_params();
+GemmPackingParams gemm_f16_2vlx2vl_packing_params();
 
-void gemm_f16p_f16p_f16(
+void gemm_f16p_f16p_f16_4vlxvl(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    _Float16* out);
+
+void gemm_f16p_f16p_f16_2vlx2vl(
     const GemmParams& p,
     const void* lhs_packed,
     const void* rhs_packed,
@@ -61,9 +71,16 @@ void gemm_f16_f16_f16_reference(
 
 // ---------- bf16 -------------------------------------------------------------
 
-GemmPackingParams gemm_bf16_packing_params();
+GemmPackingParams gemm_bf16_4vlxvl_packing_params();
+GemmPackingParams gemm_bf16_2vlx2vl_packing_params();
 
-void gemm_bf16p_bf16p_bf16(
+void gemm_bf16p_bf16p_bf16_4vlxvl(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    __bf16* out);
+
+void gemm_bf16p_bf16p_bf16_2vlx2vl(
     const GemmParams& p,
     const void* lhs_packed,
     const void* rhs_packed,
@@ -84,9 +101,17 @@ struct QuantParams {
   const float* w_ksums;   // precomputed: sum_k(w[k,n]) * w_scales[n], N elements
 };
 
-GemmPackingParams gemm_qd8_qc8w_packing_params();
+GemmPackingParams gemm_qd8_qc8w_4vlxvl_packing_params();
+GemmPackingParams gemm_qd8_qc8w_2vlx2vl_packing_params();
 
-void gemm_qd8p_qc8wp_f32(
+void gemm_qd8p_qc8wp_f32_4vlxvl(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    float* out,
+    const QuantParams& qp);
+
+void gemm_qd8p_qc8wp_f32_2vlx2vl(
     const GemmParams& p,
     const void* lhs_packed,
     const void* rhs_packed,
@@ -99,5 +124,49 @@ void gemm_qd8_qc8w_f32_reference(
     const int8_t* rhs,
     float* output,
     const QuantParams& qp);
+
+// ---------- qd8×qc4w→f32 (asymmetric activations, 4-bit per-channel weights)
+
+GemmPackingParams gemm_qd8_qc4w_4vlxvl_packing_params();
+
+void gemm_qd8p_qc4wp_f32_4vlxvl(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    float* out,
+    const QuantParams& qp);
+
+void gemm_qd8_qc4w_f32_reference(
+    const GemmParams& p,
+    const int8_t* lhs,
+    const int8_t* rhs,
+    float* output,
+    const QuantParams& qp);
+
+// ---------- qd8×qb4w→f32 (asymmetric activations, 4-bit groupwise weights) --
+
+struct BlockQuantParams {
+  int8_t a_zero_point;
+  float a_scale;
+  size_t group_size;
+  const float* w_scales;  // num_groups × N, row-major: w_scales[g * N + n]
+  const float* w_ksums;   // N elements, precomputed across all groups
+};
+
+GemmPackingParams gemm_qd8_qb4w_4vlxvl_packing_params();
+
+void gemm_qd8p_qb4wp_f32_4vlxvl(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    float* out,
+    const BlockQuantParams& qp);
+
+void gemm_qd8_qb4w_f32_reference(
+    const GemmParams& p,
+    const int8_t* lhs,
+    const int8_t* rhs,
+    float* output,
+    const BlockQuantParams& qp);
 
 }  // namespace sme

@@ -1,4 +1,4 @@
-#include "gemm_qd8_qc8w_sme.h"
+#include "gemm_qd8_qc8w_4vlxvl_sme.h"
 
 #include <arm_sme.h>
 
@@ -10,7 +10,7 @@ static size_t svl_f32() {
   return svl_bytes / sizeof(float);
 }
 
-GemmPackingParams gemm_qd8_qc8w_packing_params() {
+GemmPackingParams gemm_qd8_qc8w_4vlxvl_packing_params() {
   size_t vl = svl_f32();
   // SMOPA za32 u8/s8 is rank-4: each instruction processes 4 K values.
   // LHS tiles: 4*vl rows × 4 cols (4 subtiles of vl rows, each holding
@@ -24,7 +24,7 @@ GemmPackingParams gemm_qd8_qc8w_packing_params() {
   };
 }
 
-void gemm_qd8p_qc8wp_f32_kernel(
+void gemm_qd8p_qc8wp_f32_4vlxvl_kernel(
     const GemmParams& p, const void* lhs_packed, const void* rhs_packed,
     float* out, const QuantParams& qp) __arm_streaming __arm_inout("za") {
 
@@ -142,7 +142,7 @@ void gemm_qd8p_qc8wp_f32_kernel(
 
       float* out_ptr = out + m * p.N + n;
 
-      svbool_t n_pred = svwhilelt_b32(n, p.N);
+      svbool_t n_pred = svwhilelt_b32((uint32_t)n, (uint32_t)p.N);
       for (auto i = 0; i < svcntw(); i++) {
         // out = acc * act_scale * w_scale - act_zp * act_scale * ksum
         svint32_t row = svread_hor_za32_s32_m(svdup_n_s32(0), pg, 0, i);

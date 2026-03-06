@@ -35,7 +35,7 @@ void slice_cols(const float* src, size_t rows, size_t cols,
 void gemm_f32p_f32p_f32_mt(const sme::GemmParams& p,
                             const void* lhs_packed, const void* rhs_packed,
                             float* out, size_t num_threads) {
-  auto pack = sme::gemm_f32_packing_params();
+  auto pack = sme::gemm_f32_4vlxvl_packing_params();
   const size_t m_tile = pack.lhs.tile_rows;  // 4*svl = 64
 
   // Round up to tile boundary, then divide among threads.
@@ -63,7 +63,7 @@ void gemm_f32p_f32p_f32_mt(const sme::GemmParams& p,
 
     threads.emplace_back([=] {
       sme::GemmParams slice_p{m_count, p.N, p.K};
-      sme::gemm_f32p_f32p_f32(slice_p, lhs_slice, rhs_packed, out_slice);
+      sme::gemm_f32p_f32p_f32_4vlxvl(slice_p, lhs_slice, rhs_packed, out_slice);
     });
   }
 
@@ -76,7 +76,7 @@ void BM_gemm_f32p_f32p_f32_mt(benchmark::State& state) {
   const size_t K = static_cast<size_t>(state.range(2));
   const size_t num_threads = static_cast<size_t>(state.range(3));
 
-  auto pack = sme::gemm_f32_packing_params();
+  auto pack = sme::gemm_f32_4vlxvl_packing_params();
 
   std::vector<float> A(M * K), B(K * N), C(M * N);
   auto lhs_packed = std::make_unique<char[]>(
@@ -137,7 +137,7 @@ void BM_gemm_f32p_f32p_f32_mt_nsplit(benchmark::State& state) {
   const size_t K = static_cast<size_t>(state.range(2));
   const size_t num_threads = static_cast<size_t>(state.range(3));
 
-  auto pack = sme::gemm_f32_packing_params();
+  auto pack = sme::gemm_f32_4vlxvl_packing_params();
   const size_t n_tile = pack.rhs.tile_cols;
 
   std::vector<float> A(M * K), B(K * N);
@@ -184,7 +184,7 @@ void BM_gemm_f32p_f32p_f32_mt_nsplit(benchmark::State& state) {
     for (size_t t = 0; t < td.size(); t++) {
       threads.emplace_back([&, t] {
         sme::GemmParams sp{M, td[t].n_count, K};
-        sme::gemm_f32p_f32p_f32(sp, lhs_packed.get(), td[t].rhs_packed.get(),
+        sme::gemm_f32p_f32p_f32_4vlxvl(sp, lhs_packed.get(), td[t].rhs_packed.get(),
                                  td[t].out.data());
       });
     }

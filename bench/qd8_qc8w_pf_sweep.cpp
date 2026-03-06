@@ -172,7 +172,7 @@ void BM_qc8w_pf(benchmark::State& state) {
   const size_t N = static_cast<size_t>(state.range(1));
   const size_t K = static_cast<size_t>(state.range(2));
 
-  auto pack = sme::gemm_qd8_qc8w_packing_params();
+  auto pack = sme::gemm_qd8_qc8w_4vlxvl_packing_params();
 
   std::vector<int8_t> A(M * K), B(K * N);
   std::vector<float> C(M * N);
