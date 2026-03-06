@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <memory>
 #include <numeric>
+#include <random>
 #include <sstream>
 #include <vector>
 
@@ -461,6 +462,70 @@ TEST(PackF32Golden, TT_3x5_tile2x3) {
   sme::pack_f32<true, true>(input.data(), 3, 5, 2, 3, buf.get());
   auto actual = to_vec(buf.get(), expected.size());
   EXPECT_EQ(actual, expected);
+}
+
+// ---------------------------------------------------------------------------
+// compute_ksums_s8 tests
+// ---------------------------------------------------------------------------
+
+TEST(ComputeKsumsS8, Golden_3x2) {
+  // clang-format off
+  //   weights (K=3, N=2), row-major:
+  //     1  -2
+  //     3   4
+  //    -5   6
+  //   col_sum[0] = 1+3+(-5) = -1,  col_sum[1] = -2+4+6 = 8
+  //   w_scales = {0.5, 2.0}
+  //   ksums[0] = -1 * 0.5 = -0.5,  ksums[1] = 8 * 2.0 = 16.0
+  std::vector<int8_t> w = {1, -2, 3, 4, -5, 6};
+  std::vector<float> w_scales = {0.5f, 2.0f};
+  // clang-format on
+  std::vector<float> ksums(2, 0.0f);
+  sme::compute_ksums_s8(w.data(), 3, 2, w_scales.data(), ksums.data());
+  EXPECT_FLOAT_EQ(ksums[0], -0.5f);
+  EXPECT_FLOAT_EQ(ksums[1], 16.0f);
+}
+
+TEST(ComputeKsumsS8, AllZeroWeights) {
+  std::vector<int8_t> w(4 * 8, 0);
+  std::vector<float> w_scales(8, 1.0f);
+  std::vector<float> ksums(8, 999.0f);
+  sme::compute_ksums_s8(w.data(), 4, 8, w_scales.data(), ksums.data());
+  for (size_t n = 0; n < 8; n++)
+    EXPECT_FLOAT_EQ(ksums[n], 0.0f) << "n=" << n;
+}
+
+TEST(ComputeKsumsS8, SingleColumn) {
+  // K=4, N=1: col_sum = 10+20+30+(-60) = 0, scale=3.0 → ksum = 0
+  std::vector<int8_t> w = {10, 20, 30, -60};
+  std::vector<float> w_scales = {3.0f};
+  std::vector<float> ksums(1);
+  sme::compute_ksums_s8(w.data(), 4, 1, w_scales.data(), ksums.data());
+  EXPECT_FLOAT_EQ(ksums[0], 0.0f);
+}
+
+TEST(ComputeKsumsS8, MatchesNaive) {
+  // Random-ish data, verify against brute-force reference.
+  const size_t K = 16, N = 8;
+  std::vector<int8_t> w(K * N);
+  std::mt19937 rng(42);
+  std::uniform_int_distribution<int> dist(-128, 127);
+  for (auto& v : w) v = static_cast<int8_t>(dist(rng));
+
+  std::vector<float> w_scales(N);
+  std::uniform_real_distribution<float> fdist(0.01f, 2.0f);
+  for (auto& s : w_scales) s = fdist(rng);
+
+  std::vector<float> ksums(N);
+  sme::compute_ksums_s8(w.data(), K, N, w_scales.data(), ksums.data());
+
+  // Naive reference
+  for (size_t n = 0; n < N; n++) {
+    int64_t col_sum = 0;
+    for (size_t k = 0; k < K; k++) col_sum += w[k * N + n];
+    float expected = static_cast<float>(col_sum) * w_scales[n];
+    EXPECT_FLOAT_EQ(ksums[n], expected) << "n=" << n;
+  }
 }
 
 }  // namespace

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace sme {
 
@@ -73,5 +74,30 @@ void gemm_bf16_bf16_bf16_reference(
     const __bf16* lhs,
     const __bf16* rhs,
     __bf16* output);
+
+// ---------- qd8×qc8w→f32 (asymmetric activations, per-channel weights) ------
+
+struct QuantParams {
+  int8_t a_zero_point;
+  float a_scale;
+  const float* w_scales;  // per-channel, N elements
+  const float* w_ksums;   // precomputed: sum_k(w[k,n]) * w_scales[n], N elements
+};
+
+GemmPackingParams gemm_qd8_qc8w_packing_params();
+
+void gemm_qd8p_qc8wp_f32(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    float* out,
+    const QuantParams& qp);
+
+void gemm_qd8_qc8w_f32_reference(
+    const GemmParams& p,
+    const int8_t* lhs,
+    const int8_t* rhs,
+    float* output,
+    const QuantParams& qp);
 
 }  // namespace sme

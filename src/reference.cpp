@@ -40,4 +40,20 @@ void gemm_bf16_bf16_bf16_reference(const GemmParams& p, const __bf16* lhs,
   }
 }
 
+void gemm_qd8_qc8w_f32_reference(const GemmParams& p, const int8_t* lhs,
+                               const int8_t* rhs, float* output,
+                               const QuantParams& qp) {
+  for (size_t m = 0; m < p.M; ++m) {
+    for (size_t n = 0; n < p.N; ++n) {
+      int32_t acc = 0;
+      for (size_t k = 0; k < p.K; ++k)
+        acc += (static_cast<int32_t>(lhs[m * p.K + k]) -
+                static_cast<int32_t>(qp.a_zero_point)) *
+               static_cast<int32_t>(rhs[k * p.N + n]);
+      output[m * p.N + n] = qp.a_scale * qp.w_scales[n] *
+                             static_cast<float>(acc);
+    }
+  }
+}
+
 }  // namespace sme

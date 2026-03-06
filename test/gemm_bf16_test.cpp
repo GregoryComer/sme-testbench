@@ -108,4 +108,28 @@ INSTANTIATE_TEST_SUITE_P(
              std::to_string(s.N);
     });
 
+INSTANTIATE_TEST_SUITE_P(
+    PartialTiles, GemmBF16Test,
+    ::testing::Values(
+        // Single axis partial
+        GemmShape{17, 16, 2},    // partial M only
+        GemmShape{16, 17, 2},    // partial N only
+        GemmShape{16, 16, 3},    // partial K only
+        // Multiple axis partial, epilogue only
+        GemmShape{17, 17, 3},    // all partial, no main body
+        GemmShape{33, 17, 5},    // 2 epilogue subtiles + partial M row, partial N, partial K
+        // Main body + partial
+        GemmShape{65, 16, 2},    // 1 main body + 1 partial M row
+        GemmShape{64, 17, 2},    // 1 main body, partial N
+        GemmShape{64, 16, 5},    // 1 main body, partial K
+        GemmShape{65, 17, 5},    // 1 main body + partial on all axes
+        GemmShape{80, 33, 7},    // 1 main body + 1 epilogue subtile, partial N, partial K
+        GemmShape{129, 33, 7}    // 2 main body + partial M, partial N, partial K
+    ),
+    [](const auto& info) {
+      auto s = info.param;
+      return std::to_string(s.M) + "x" + std::to_string(s.K) + "x" +
+             std::to_string(s.N);
+    });
+
 }  // namespace

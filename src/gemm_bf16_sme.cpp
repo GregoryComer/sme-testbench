@@ -28,7 +28,6 @@ GemmPackingParams gemm_bf16_packing_params() {
 // Tile mapping: ZA0..ZA3 = 4 M-sub-tiles x 1 N-tile.
 // Each BFMOPA processes 2 K values (rank-2 widening bf16→f32).
 // M epilogue handles remainder with a 1x1 loop (ZA0 only).
-// Assumes N is a multiple of svcntw().
 void gemm_bf16p_bf16p_bf16_kernel(
     const GemmParams& p, const void* lhs_packed, const void* rhs_packed,
     __bf16* out) __arm_streaming __arm_inout("za") {
@@ -41,13 +40,14 @@ void gemm_bf16p_bf16p_bf16_kernel(
   const svbool_t pg16 = svptrue_b16();
   const svbool_t pg32 = svptrue_b32();
 
+  const uint64_t K_padded = (p.K + 1) & ~1ULL;  // round up to K-tile (rank-2)
   const uint64_t m_body = (p.M / (vl_f32 * 4)) * (vl_f32 * 4);
 
   for (uint64_t m = 0; m < m_body; m += vl_f32 * 4) {
-    const bfloat16_t* lhs_m = lhs_base + (m / (vl_f32 * 4)) * p.K * vl_f32 * 4;
+    const bfloat16_t* lhs_m = lhs_base + (m / (vl_f32 * 4)) * K_padded * vl_f32 * 4;
 
     for (uint64_t n = 0; n < p.N; n += vl_f32) {
-      const bfloat16_t* rhs_n = rhs_base + (n / vl_f32) * p.K * vl_f32;
+      const bfloat16_t* rhs_n = rhs_base + (n / vl_f32) * K_padded * vl_f32;
 
       svzero_za();
 
@@ -74,22 +74,23 @@ void gemm_bf16p_bf16p_bf16_kernel(
       // 32-bit container) → ST1H truncating store (bottom 16 bits).
       const svfloat32_t f32z = svdup_n_f32(0);
       auto* dst16 = reinterpret_cast<int16_t*>(out);
+      svbool_t n_pred = svwhilelt_b32(n, (uint64_t)p.N);
 
       for (uint32_t i = 0; i < vl_f32; i++) {
         svfloat32_t r0 = svread_hor_za32_f32_m(f32z, pg32, 0, i);
-        svst1h_s32(pg32, dst16 + (m + i) * p.N + n,
+        svst1h_s32(n_pred, dst16 + (m + i) * p.N + n,
                    svreinterpret_s32_bf16(svcvt_bf16_f32_x(pg32, r0)));
 
         svfloat32_t r1 = svread_hor_za32_f32_m(f32z, pg32, 1, i);
-        svst1h_s32(pg32, dst16 + (m + vl_f32 + i) * p.N + n,
+        svst1h_s32(n_pred, dst16 + (m + vl_f32 + i) * p.N + n,
                    svreinterpret_s32_bf16(svcvt_bf16_f32_x(pg32, r1)));
 
         svfloat32_t r2 = svread_hor_za32_f32_m(f32z, pg32, 2, i);
-        svst1h_s32(pg32, dst16 + (m + vl_f32 * 2 + i) * p.N + n,
+        svst1h_s32(n_pred, dst16 + (m + vl_f32 * 2 + i) * p.N + n,
                    svreinterpret_s32_bf16(svcvt_bf16_f32_x(pg32, r2)));
 
         svfloat32_t r3 = svread_hor_za32_f32_m(f32z, pg32, 3, i);
-        svst1h_s32(pg32, dst16 + (m + vl_f32 * 3 + i) * p.N + n,
+        svst1h_s32(n_pred, dst16 + (m + vl_f32 * 3 + i) * p.N + n,
                    svreinterpret_s32_bf16(svcvt_bf16_f32_x(pg32, r3)));
       }
     }
@@ -99,7 +100,7 @@ void gemm_bf16p_bf16p_bf16_kernel(
   // using a 1x1 predicated micro-kernel (ZA0 only).
   if (m_body < p.M) {
     const bfloat16_t* lhs_m =
-        lhs_base + (m_body / (vl_f32 * 4)) * p.K * vl_f32 * 4;
+        lhs_base + (m_body / (vl_f32 * 4)) * K_padded * vl_f32 * 4;
 
     for (uint64_t s = 0; m_body + s * vl_f32 < p.M; s++) {
       const uint64_t m_row = m_body + s * vl_f32;
@@ -108,7 +109,7 @@ void gemm_bf16p_bf16p_bf16_kernel(
       const uint64_t rows = rem < vl_f32 ? rem : vl_f32;
 
       for (uint64_t n = 0; n < p.N; n += vl_f32) {
-        const bfloat16_t* rhs_n = rhs_base + (n / vl_f32) * p.K * vl_f32;
+        const bfloat16_t* rhs_n = rhs_base + (n / vl_f32) * K_padded * vl_f32;
 
         svzero_za();
 
@@ -127,9 +128,10 @@ void gemm_bf16p_bf16p_bf16_kernel(
 
         const svfloat32_t ez32 = svdup_n_f32(0);
         auto* edst16 = reinterpret_cast<int16_t*>(out);
+        svbool_t n_pred = svwhilelt_b32(n, (uint64_t)p.N);
         for (uint32_t i = 0; i < rows; i++) {
           svfloat32_t r = svread_hor_za32_f32_m(ez32, pg32, 0, i);
-          svst1h_s32(pg32, edst16 + (m_row + i) * p.N + n,
+          svst1h_s32(n_pred, edst16 + (m_row + i) * p.N + n,
                      svreinterpret_s32_bf16(svcvt_bf16_f32_x(pg32, r)));
         }
       }

@@ -12,6 +12,7 @@ add_library(sme_kernels
   src/gemm_f32_sme.cpp
   src/gemm_f16_sme.cpp
   src/gemm_bf16_sme.cpp
+  src/gemm_qd8_qc8w_sme.cpp
   src/reference.cpp
 )
 target_include_directories(sme_kernels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -22,6 +23,7 @@ set_source_files_properties(
   src/gemm_f32_sme.cpp
   src/gemm_f16_sme.cpp
   src/gemm_bf16_sme.cpp
+  src/gemm_qd8_qc8w_sme.cpp
   PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
 )
 
@@ -58,10 +60,14 @@ target_link_libraries(pack_test PRIVATE sme_kernels GTest::gtest_main)
 add_executable(gemm_bf16_test test/gemm_bf16_test.cpp)
 target_link_libraries(gemm_bf16_test PRIVATE sme_kernels GTest::gtest_main)
 
+add_executable(gemm_qd8_qc8w_test test/gemm_qd8_qc8w_test.cpp)
+target_link_libraries(gemm_qd8_qc8w_test PRIVATE sme_kernels GTest::gtest_main)
+
 include(GoogleTest)
 gtest_discover_tests(gemm_test)
 gtest_discover_tests(gemm_f16_test)
 gtest_discover_tests(gemm_bf16_test)
+gtest_discover_tests(gemm_qd8_qc8w_test)
 gtest_discover_tests(pack_test)
 
 # ---------- benchmarks ----------
@@ -74,8 +80,17 @@ target_link_libraries(gemm_f16_bench PRIVATE sme_kernels benchmark::benchmark_ma
 add_executable(gemm_bf16_bench bench/gemm_bf16_bench.cpp)
 target_link_libraries(gemm_bf16_bench PRIVATE sme_kernels benchmark::benchmark_main)
 
+add_executable(gemm_qd8_qc8w_bench bench/gemm_qd8_qc8w_bench.cpp)
+target_link_libraries(gemm_qd8_qc8w_bench PRIVATE sme_kernels benchmark::benchmark_main)
+
 add_executable(gemm_mt_bench bench/gemm_mt_bench.cpp)
 target_link_libraries(gemm_mt_bench PRIVATE sme_kernels benchmark::benchmark_main)
+
+add_executable(qd8_qc8w_pf_sweep bench/qd8_qc8w_pf_sweep.cpp)
+set_source_files_properties(bench/qd8_qc8w_pf_sweep.cpp
+  PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
+)
+target_link_libraries(qd8_qc8w_pf_sweep PRIVATE sme_kernels benchmark::benchmark_main)
 
 add_executable(mopa_peak_bench bench/mopa_peak_bench.cpp)
 set_source_files_properties(bench/mopa_peak_bench.cpp

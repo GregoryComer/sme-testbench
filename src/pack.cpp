@@ -186,4 +186,106 @@ void pack_bf16(const __bf16* data, size_t rows, size_t cols,
     pack_bf16<false, false>(data, rows, cols, params.tile_rows, params.tile_cols, out);
 }
 
+// ---------- u8 ---------------------------------------------------------------
+
+size_t packed_size_bytes_u8(size_t rows, size_t cols, size_t tile_r,
+                            size_t tile_c) {
+  return detail::packed_size_bytes<uint8_t>(rows, cols, tile_r, tile_c);
+}
+
+size_t packed_size_bytes_u8(size_t rows, size_t cols,
+                            const PackingParams& params) {
+  return packed_size_bytes_u8(rows, cols, params.tile_rows, params.tile_cols);
+}
+
+template <bool TransposeInner, bool TransposeOuter>
+void pack_u8(const uint8_t* data, size_t rows, size_t cols, size_t tile_r,
+             size_t tile_c, void* out) {
+  detail::pack<uint8_t, TransposeInner, TransposeOuter>(data, rows, cols,
+                                                         tile_r, tile_c, out);
+}
+
+template void pack_u8<false, false>(const uint8_t*, size_t, size_t, size_t,
+                                    size_t, void*);
+template void pack_u8<false, true>(const uint8_t*, size_t, size_t, size_t,
+                                   size_t, void*);
+template void pack_u8<true, false>(const uint8_t*, size_t, size_t, size_t,
+                                   size_t, void*);
+template void pack_u8<true, true>(const uint8_t*, size_t, size_t, size_t,
+                                  size_t, void*);
+
+void pack_u8(const uint8_t* data, size_t rows, size_t cols,
+             const PackingParams& params, void* out) {
+  bool ti = params.transpose_inner;
+  bool to = params.transpose_outer;
+  if (ti && to)
+    pack_u8<true, true>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+  else if (ti)
+    pack_u8<true, false>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+  else if (to)
+    pack_u8<false, true>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+  else
+    pack_u8<false, false>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+}
+
+// ---------- s8 ---------------------------------------------------------------
+
+size_t packed_size_bytes_s8(size_t rows, size_t cols, size_t tile_r,
+                            size_t tile_c) {
+  return detail::packed_size_bytes<int8_t>(rows, cols, tile_r, tile_c);
+}
+
+size_t packed_size_bytes_s8(size_t rows, size_t cols,
+                            const PackingParams& params) {
+  return packed_size_bytes_s8(rows, cols, params.tile_rows, params.tile_cols);
+}
+
+template <bool TransposeInner, bool TransposeOuter>
+void pack_s8(const int8_t* data, size_t rows, size_t cols, size_t tile_r,
+             size_t tile_c, void* out) {
+  detail::pack<int8_t, TransposeInner, TransposeOuter>(data, rows, cols,
+                                                        tile_r, tile_c, out);
+}
+
+template void pack_s8<false, false>(const int8_t*, size_t, size_t, size_t,
+                                    size_t, void*);
+template void pack_s8<false, true>(const int8_t*, size_t, size_t, size_t,
+                                   size_t, void*);
+template void pack_s8<true, false>(const int8_t*, size_t, size_t, size_t,
+                                   size_t, void*);
+template void pack_s8<true, true>(const int8_t*, size_t, size_t, size_t,
+                                  size_t, void*);
+
+void pack_s8(const int8_t* data, size_t rows, size_t cols,
+             const PackingParams& params, void* out) {
+  bool ti = params.transpose_inner;
+  bool to = params.transpose_outer;
+  if (ti && to)
+    pack_s8<true, true>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+  else if (ti)
+    pack_s8<true, false>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+  else if (to)
+    pack_s8<false, true>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+  else
+    pack_s8<false, false>(data, rows, cols, params.tile_rows, params.tile_cols, out);
+}
+
+void compute_ksums_s8(const int8_t* data, size_t K, size_t N, const float* w_scales,
+    float* out) {
+  // Precompute the common per-channel term dependent on weights and weight scales.
+  // Out[...] = (act - zp_act) * s_act * w * s_w ... (along k dim)
+  // Compute sum of w * s_w along each column. This gives the per-channel scale
+  // factor to apply activation zp in the kernel.
+
+  // Data is row-major, KxN
+  // We want to iterate along columns
+  for (auto n = 0u; n < N; n++) {
+    int64_t k_sum = 0;
+    for (auto k = 0u; k < K; k++) {
+      k_sum += data[k * N + n];
+    }
+    out[n] = static_cast<float>(k_sum) * w_scales[n];
+  }
+}
+
 }  // namespace sme
