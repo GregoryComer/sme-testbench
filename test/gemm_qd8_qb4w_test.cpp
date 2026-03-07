@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <random>
 #include <vector>
@@ -48,18 +49,30 @@ void run_qd8_qb4w_test(size_t M, size_t N, size_t K, PackingFn packing_fn, GemmF
   auto pack = packing_fn();
 
   size_t num_groups = (K + kGroupSize - 1) / kGroupSize;
+  size_t K_padded = num_groups * kGroupSize;
 
+  // Original data (M×K, K×N) for reference.
   std::vector<int8_t> A(M * K);
-  std::vector<int8_t> B(K * N);  // weights in [-8, 7]
-  auto lhs_packed = std::make_unique<char[]>(
-      sme::packed_size_bytes_s8(M, K, pack.lhs));
-  auto rhs_packed = std::make_unique<char[]>(
-      sme::packed_size_bytes_s4(K, N, pack.rhs));
-  std::vector<float> C(M * N, 0.0f);
-  std::vector<float> C_ref(M * N, 0.0f);
-
+  std::vector<int8_t> B(K * N);
   fill_random_s8(A.data(), A.size(), 42);
   fill_random_s4(B.data(), B.size(), 123);
+
+  // LHS padded to M×K_padded (zero-padded columns).
+  std::vector<int8_t> A_padded(M * K_padded, 0);
+  for (size_t m = 0; m < M; m++)
+    std::memcpy(&A_padded[m * K_padded], &A[m * K], K);
+
+  // RHS padded to K_padded×N (zero-padded rows). Stride is N, so first K*N
+  // elements are identical to B.
+  std::vector<int8_t> B_padded(K_padded * N, 0);
+  std::memcpy(B_padded.data(), B.data(), K * N);
+
+  auto lhs_packed = std::make_unique<char[]>(
+      sme::packed_size_bytes_s8(M, K_padded, pack.lhs));
+  auto rhs_packed = std::make_unique<char[]>(
+      sme::packed_size_bytes_s4(K_padded, N, pack.rhs));
+  std::vector<float> C(M * N, 0.0f);
+  std::vector<float> C_ref(M * N, 0.0f);
 
   std::vector<float> w_scales(num_groups * N);
   fill_random_f32(w_scales.data(), w_scales.size(), 77);
@@ -67,17 +80,30 @@ void run_qd8_qb4w_test(size_t M, size_t N, size_t K, PackingFn packing_fn, GemmF
   std::vector<float> w_ksums(N);
   sme::compute_group_ksums_s8(B.data(), K, N, kGroupSize, w_scales.data(), w_ksums.data());
 
-  sme::GemmParams p{M, N, K};
-  sme::BlockQuantParams qp{/*.a_zero_point=*/5, /*.a_scale=*/0.05f,
+  size_t svl_w = pack.rhs.tile_cols;
+
+  // Tile-pack w_scales: [num_groups][N] -> [N/svl_w][num_groups][svl_w].
+  std::vector<float> packed_scales(
+      sme::packed_group_scales_len(num_groups, N, svl_w));
+  sme::pack_group_scales(w_scales.data(), num_groups, N, svl_w,
+                         packed_scales.data());
+
+  sme::GemmParams p{M, N, K_padded};
+  sme::BlockQuantParams qp{/*.a_zero_point=*/0, /*.a_scale=*/0.05f,
                             /*.group_size=*/kGroupSize,
-                            /*.w_scales=*/w_scales.data(),
+                            /*.w_scales=*/packed_scales.data(),
                             /*.w_ksums=*/w_ksums.data()};
 
-  sme::pack_s8(A.data(), M, K, pack.lhs, lhs_packed.get());
-  sme::pack_s4(B.data(), K, N, pack.rhs, rhs_packed.get());
-  gemm_fn(p, lhs_packed.get(), rhs_packed.get(), C.data(), qp);
+  std::vector<float> scratch(4 * svl_w * svl_w);
 
-  sme::gemm_qd8_qb4w_f32_reference(p, A.data(), B.data(), C_ref.data(), qp);
+  sme::pack_s8(A_padded.data(), M, K_padded, pack.lhs, lhs_packed.get());
+  sme::pack_s4(B_padded.data(), K_padded, N, pack.rhs, rhs_packed.get());
+  gemm_fn(p, lhs_packed.get(), rhs_packed.get(), C.data(), qp, scratch.data());
+
+  // Reference uses unpacked row-major scales.
+  sme::GemmParams p_ref{M, N, K};
+  sme::BlockQuantParams qp_ref{0, 0.05f, kGroupSize, w_scales.data(), w_ksums.data()};
+  sme::gemm_qd8_qb4w_f32_reference(p_ref, A.data(), B.data(), C_ref.data(), qp_ref);
 
   for (size_t i = 0; i < M * N; ++i) {
     float tol = 1e-4f + 1e-5f * std::fabs(C_ref[i]);
@@ -100,6 +126,7 @@ TEST_P(GemmQd8Qb4w_4vlxvlTest, ReferencePipeline) {
   auto [M, N, K] = GetParam();
 
   size_t num_groups = (K + kGroupSize - 1) / kGroupSize;
+  size_t K_padded = num_groups * kGroupSize;
   auto pack = sme::gemm_qd8_qb4w_4vlxvl_packing_params();
 
   std::vector<int8_t> A(M * K);
@@ -127,14 +154,19 @@ TEST_P(GemmQd8Qb4w_4vlxvlTest, ReferencePipeline) {
   EXPECT_GT(sum, 0.0f) << "reference produced all-zero output";
 
   // Verify packing round-trips don't crash and sizes are sane.
-  size_t lhs_bytes = sme::packed_size_bytes_s8(M, K, pack.lhs);
-  size_t rhs_bytes = sme::packed_size_bytes_s4(K, N, pack.rhs);
+  // LHS padded to K_padded columns for packing.
+  std::vector<int8_t> A_padded(M * K_padded, 0);
+  for (size_t m = 0; m < M; m++)
+    std::memcpy(&A_padded[m * K_padded], &A[m * K], K);
+
+  size_t lhs_bytes = sme::packed_size_bytes_s8(M, K_padded, pack.lhs);
+  size_t rhs_bytes = sme::packed_size_bytes_s4(K_padded, N, pack.rhs);
   EXPECT_GE(lhs_bytes, M * K * sizeof(int8_t));
   // s4 packed size should be at least half the element count (nibble-packed).
   EXPECT_GE(rhs_bytes, (K * N + 1) / 2);
 
   auto lhs_packed = std::make_unique<char[]>(lhs_bytes);
-  sme::pack_s8(A.data(), M, K, pack.lhs, lhs_packed.get());
+  sme::pack_s8(A_padded.data(), M, K_padded, pack.lhs, lhs_packed.get());
 }
 
 INSTANTIATE_TEST_SUITE_P(EpilogueSingleTile, GemmQd8Qb4w_4vlxvlTest,
@@ -155,6 +187,44 @@ INSTANTIATE_TEST_SUITE_P(MainBody, GemmQd8Qb4w_4vlxvlTest,
     shape_name);
 
 INSTANTIATE_TEST_SUITE_P(PartialTiles, GemmQd8Qb4w_4vlxvlTest,
+    ::testing::Values(
+        GemmShape{17, 16, 32}, GemmShape{16, 17, 32}, GemmShape{16, 16, 64},
+        GemmShape{17, 17, 32}, GemmShape{33, 17, 64}, GemmShape{65, 16, 32},
+        GemmShape{64, 17, 32}, GemmShape{64, 16, 64}, GemmShape{65, 17, 64},
+        GemmShape{80, 33, 96}, GemmShape{129, 33, 64}),
+    shape_name);
+
+// --- 2vlx2vl (2x2) ----------------------------------------------------------
+
+class GemmQd8Qb4w_2vlx2vlTest : public ::testing::TestWithParam<GemmShape> {};
+
+TEST_P(GemmQd8Qb4w_2vlx2vlTest, MatchesReference) {
+  auto [M, N, K] = GetParam();
+  run_qd8_qb4w_test(M, N, K, sme::gemm_qd8_qb4w_2vlx2vl_packing_params,
+      [](const sme::GemmParams& p, const void* lhs, const void* rhs,
+         float* out, const sme::BlockQuantParams& qp, float*) {
+        sme::gemm_qd8p_qb4wp_f32_2vlx2vl(p, lhs, rhs, out, qp);
+      });
+}
+
+INSTANTIATE_TEST_SUITE_P(EpilogueSingleTile, GemmQd8Qb4w_2vlx2vlTest,
+    ::testing::Values(GemmShape{16, 16, 32}, GemmShape{16, 16, 64}, GemmShape{16, 16, 128}),
+    shape_name);
+
+INSTANTIATE_TEST_SUITE_P(EpilogueStrides, GemmQd8Qb4w_2vlx2vlTest,
+    ::testing::Values(
+        GemmShape{32, 16, 32}, GemmShape{16, 32, 32}, GemmShape{32, 32, 32},
+        GemmShape{48, 16, 32}, GemmShape{32, 16, 64}, GemmShape{32, 32, 64}),
+    shape_name);
+
+INSTANTIATE_TEST_SUITE_P(MainBody, GemmQd8Qb4w_2vlx2vlTest,
+    ::testing::Values(
+        GemmShape{64, 16, 32}, GemmShape{64, 32, 32}, GemmShape{64, 16, 128},
+        GemmShape{128, 16, 32}, GemmShape{128, 32, 64}, GemmShape{80, 16, 32},
+        GemmShape{96, 32, 64}, GemmShape{128, 128, 128}),
+    shape_name);
+
+INSTANTIATE_TEST_SUITE_P(PartialTiles, GemmQd8Qb4w_2vlx2vlTest,
     ::testing::Values(
         GemmShape{17, 16, 32}, GemmShape{16, 17, 32}, GemmShape{16, 16, 64},
         GemmShape{17, 17, 32}, GemmShape{33, 17, 64}, GemmShape{65, 16, 32},

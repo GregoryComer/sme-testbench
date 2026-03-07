@@ -288,4 +288,144 @@ void compute_ksums_s8(const int8_t* data, size_t K, size_t N, const float* w_sca
   }
 }
 
+void compute_group_ksums_s8(const int8_t* data, size_t K, size_t N,
+    size_t group_size, const float* w_scales, float* out) {
+  // Precompute the accumulated per-channel ksum across all groups:
+  //   out[n] = sum_g( w_scales[g*N+n] * sum_{k in group g}(data[k*N+n]) )
+  size_t num_groups = (K + group_size - 1) / group_size;
+  for (size_t n = 0; n < N; n++) {
+    float total = 0.0f;
+    for (size_t g = 0; g < num_groups; g++) {
+      size_t k_start = g * group_size;
+      size_t k_end = k_start + group_size;
+      if (k_end > K) k_end = K;
+      int64_t group_sum = 0;
+      for (size_t k = k_start; k < k_end; k++) {
+        group_sum += data[k * N + n];
+      }
+      total += static_cast<float>(group_sum) * w_scales[g * N + n];
+    }
+    out[n] = total;
+  }
+}
+
+// ---------- group scale tiling ------------------------------------------------
+
+size_t packed_group_scales_len(size_t num_groups, size_t N, size_t tile_n) {
+  size_t n_tiles = (N + tile_n - 1) / tile_n;
+  return n_tiles * num_groups * tile_n;
+}
+
+void pack_group_scales(const float* scales, size_t num_groups, size_t N,
+                       size_t tile_n, float* out) {
+  size_t n_tiles = (N + tile_n - 1) / tile_n;
+  for (size_t nt = 0; nt < n_tiles; nt++) {
+    for (size_t g = 0; g < num_groups; g++) {
+      for (size_t no = 0; no < tile_n; no++) {
+        size_t n = nt * tile_n + no;
+        *out++ = (n < N) ? scales[g * N + n] : 0.0f;
+      }
+    }
+  }
+}
+
+// ---------- s4 (signed 4-bit, nibble-packed) ---------------------------------
+//
+// Packs signed 4-bit values into nibble pairs, tiled identically to the s8
+// packing but with two adjacent row-tiles folded into each byte:
+//   lower nibble = element from row-tile 2k  (sign-magnitude in 4 bits)
+//   upper nibble = element from row-tile 2k+1
+//
+// For the qc4w RHS (TransposeOuter=true), row-tiles correspond to K-tiles,
+// so each output byte holds values from two consecutive K-tiles.
+
+size_t packed_size_bytes_s4(size_t rows, size_t cols, size_t tile_r,
+                            size_t tile_c) {
+  size_t row_tiles = (rows + tile_r - 1) / tile_r;
+  size_t col_tiles = (cols + tile_c - 1) / tile_c;
+  // Pair row-tiles: each pair produces tile_r * tile_c bytes (one byte per
+  // element position, containing two nibbles).
+  size_t row_tile_pairs = (row_tiles + 1) / 2;
+  return row_tile_pairs * col_tiles * tile_r * tile_c;
+}
+
+size_t packed_size_bytes_s4(size_t rows, size_t cols,
+                            const PackingParams& params) {
+  return packed_size_bytes_s4(rows, cols, params.tile_rows, params.tile_cols);
+}
+
+void pack_s4(const int8_t* data, size_t rows, size_t cols,
+             const PackingParams& params, void* out) {
+  size_t tile_r = params.tile_rows;
+  size_t tile_c = params.tile_cols;
+
+  size_t num_row_tiles = (rows + tile_r - 1) / tile_r;
+  size_t num_col_tiles = (cols + tile_c - 1) / tile_c;
+
+  // After TransposeOuter swap (same logic as detail::pack).
+  size_t out_row_tiles = num_row_tiles;
+  size_t out_col_tiles = num_col_tiles;
+  if (params.transpose_outer) {
+    std::swap(out_row_tiles, out_col_tiles);
+  }
+
+  // After TransposeInner swap.
+  size_t out_tile_r = tile_r;
+  size_t out_tile_c = tile_c;
+  if (params.transpose_inner) {
+    std::swap(out_tile_r, out_tile_c);
+  }
+
+  // We pair along the inner (c_tile) dimension of the output, which maps to
+  // row-tiles after TransposeOuter.
+  size_t out_col_tile_pairs = (out_col_tiles + 1) / 2;
+
+  auto* dst = static_cast<uint8_t*>(out);
+
+  for (size_t r_tile = 0; r_tile < out_row_tiles; r_tile++) {
+    for (size_t c_pair = 0; c_pair < out_col_tile_pairs; c_pair++) {
+      size_t c_tile_lo = c_pair * 2;
+      size_t c_tile_hi = c_pair * 2 + 1;
+
+      for (size_t r_off = 0; r_off < out_tile_r; r_off++) {
+        for (size_t c_off = 0; c_off < out_tile_c; c_off++) {
+          size_t in_r_off = params.transpose_inner ? c_off : r_off;
+          size_t in_c_off = params.transpose_inner ? r_off : c_off;
+
+          // Lower nibble: from c_tile_lo.
+          size_t row0, col0;
+          if (params.transpose_outer) {
+            row0 = c_tile_lo * tile_r + in_r_off;
+            col0 = r_tile * tile_c + in_c_off;
+          } else {
+            row0 = r_tile * tile_r + in_r_off;
+            col0 = c_tile_lo * tile_c + in_c_off;
+          }
+          int8_t val0 = 0;
+          if (row0 < rows && col0 < cols)
+            val0 = data[row0 * cols + col0];
+
+          // Upper nibble: from c_tile_hi.
+          int8_t val1 = 0;
+          if (c_tile_hi < out_col_tiles) {
+            size_t row1, col1;
+            if (params.transpose_outer) {
+              row1 = c_tile_hi * tile_r + in_r_off;
+              col1 = r_tile * tile_c + in_c_off;
+            } else {
+              row1 = r_tile * tile_r + in_r_off;
+              col1 = c_tile_hi * tile_c + in_c_off;
+            }
+            if (row1 < rows && col1 < cols)
+              val1 = data[row1 * cols + col1];
+          }
+
+          *dst++ = (static_cast<uint8_t>(val0) & 0xF) |
+                   ((static_cast<uint8_t>(val1) & 0xF) << 4);
+        }
+      }
+    }
+  }
+}
+
 }  // namespace sme

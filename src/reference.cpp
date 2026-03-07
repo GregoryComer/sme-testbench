@@ -56,4 +56,35 @@ void gemm_qd8_qc8w_f32_reference(const GemmParams& p, const int8_t* lhs,
   }
 }
 
+void gemm_qd8_qc4w_f32_reference(const GemmParams& p, const int8_t* lhs,
+                                  const int8_t* rhs, float* output,
+                                  const QuantParams& qp) {
+  // Identical to qc8w — same per-channel dequantisation, just smaller weight range.
+  gemm_qd8_qc8w_f32_reference(p, lhs, rhs, output, qp);
+}
+
+void gemm_qd8_qb4w_f32_reference(const GemmParams& p, const int8_t* lhs,
+                                  const int8_t* rhs, float* output,
+                                  const BlockQuantParams& qp) {
+  size_t num_groups = (p.K + qp.group_size - 1) / qp.group_size;
+  for (size_t m = 0; m < p.M; ++m) {
+    for (size_t n = 0; n < p.N; ++n) {
+      float acc = 0.0f;
+      for (size_t g = 0; g < num_groups; ++g) {
+        size_t k_start = g * qp.group_size;
+        size_t k_end = k_start + qp.group_size;
+        if (k_end > p.K) k_end = p.K;
+        int32_t group_acc = 0;
+        for (size_t k = k_start; k < k_end; ++k) {
+          group_acc += (static_cast<int32_t>(lhs[m * p.K + k]) -
+                        static_cast<int32_t>(qp.a_zero_point)) *
+                       static_cast<int32_t>(rhs[k * p.N + n]);
+        }
+        acc += qp.w_scales[g * p.N + n] * static_cast<float>(group_acc);
+      }
+      output[m * p.N + n] = qp.a_scale * acc;
+    }
+  }
+}
+
 }  // namespace sme

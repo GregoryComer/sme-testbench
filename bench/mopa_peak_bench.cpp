@@ -4,6 +4,7 @@
 //
 // Tests three variants:
 //   f32  FMOPA: za.s += z.s * z.s     (rank-1,  2*VL²    FLOPs/mopa)
+//   bf16 FMOPA: za.s += z.h * z.h     (rank-2,  4*VL²    FLOPs/mopa)
 //   f16  FMOPA: za.s += z.h * z.h     (rank-2,  4*VL²    FLOPs/mopa)
 //   i8   SMOPA: za.s += z.b * z.b     (rank-4,  8*VL²    OPs/mopa)
 
@@ -35,6 +36,39 @@ static void run_f32(uint64_t iterations) {
       "fmov z7.s, #1.0\n"
       "1:\n"
       F32_MOPA64
+      "subs %[n], %[n], #1\n"
+      "b.ne 1b\n"
+      "smstop\n"
+      : [n] "+r"(iterations)
+      :
+      : "cc", "memory",
+        "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15");
+}
+
+// ---- bf16→f32 widening FMOPA (rank-2) -------------------------------------
+#define BF16_MOPA4                               \
+  "bfmopa za0.s, p0/m, p0/m, z0.h, z4.h\n"     \
+  "bfmopa za1.s, p0/m, p0/m, z1.h, z5.h\n"     \
+  "bfmopa za2.s, p0/m, p0/m, z2.h, z6.h\n"     \
+  "bfmopa za3.s, p0/m, p0/m, z3.h, z7.h\n"
+#define BF16_MOPA16 BF16_MOPA4 BF16_MOPA4 BF16_MOPA4 BF16_MOPA4
+#define BF16_MOPA64 BF16_MOPA16 BF16_MOPA16 BF16_MOPA16 BF16_MOPA16
+
+static void run_bf16(uint64_t iterations) {
+  asm volatile(
+      "smstart\n"
+      "ptrue p0.h\n"
+      "zero {za}\n"
+      "mov z0.h, #0x3f80\n"
+      "mov z1.h, #0x3f80\n"
+      "mov z2.h, #0x3f80\n"
+      "mov z3.h, #0x3f80\n"
+      "mov z4.h, #0x3f80\n"
+      "mov z5.h, #0x3f80\n"
+      "mov z6.h, #0x3f80\n"
+      "mov z7.h, #0x3f80\n"
+      "1:\n"
+      BF16_MOPA64
       "subs %[n], %[n], #1\n"
       "b.ne 1b\n"
       "smstop\n"
@@ -110,6 +144,49 @@ static void run_i8(uint64_t iterations) {
         "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15");
 }
 
+// ---- i8 s4-unpack + SMOPA (3 shifts + 8 MOPAs per block) -----------------
+// Measures the throughput cost of interleaving the nibble-unpack sequence
+// (LSL #4, ASR #4, ASR #4) with SMOPA.  64 MOPAs per iteration (8 blocks).
+#define S4_BLOCK                                       \
+  "lsl z9.b, z8.b, #4\n"                              \
+  "asr z10.b, z9.b, #4\n"                             \
+  "asr z11.b, z8.b, #4\n"                             \
+  "smopa za0.s, p0/m, p0/m, z0.b, z10.b\n"            \
+  "smopa za1.s, p0/m, p0/m, z1.b, z10.b\n"            \
+  "smopa za2.s, p0/m, p0/m, z2.b, z10.b\n"            \
+  "smopa za3.s, p0/m, p0/m, z3.b, z10.b\n"            \
+  "smopa za0.s, p0/m, p0/m, z4.b, z11.b\n"            \
+  "smopa za1.s, p0/m, p0/m, z5.b, z11.b\n"            \
+  "smopa za2.s, p0/m, p0/m, z6.b, z11.b\n"            \
+  "smopa za3.s, p0/m, p0/m, z7.b, z11.b\n"
+#define S4_BLOCK8 S4_BLOCK S4_BLOCK S4_BLOCK S4_BLOCK \
+                  S4_BLOCK S4_BLOCK S4_BLOCK S4_BLOCK
+
+static void run_i8_s4_unpack(uint64_t iterations) {
+  asm volatile(
+      "smstart\n"
+      "ptrue p0.b\n"
+      "zero {za}\n"
+      "mov z0.b, #1\n"
+      "mov z1.b, #1\n"
+      "mov z2.b, #1\n"
+      "mov z3.b, #1\n"
+      "mov z4.b, #1\n"
+      "mov z5.b, #1\n"
+      "mov z6.b, #1\n"
+      "mov z7.b, #1\n"
+      "mov z8.b, #0x37\n"
+      "1:\n"
+      S4_BLOCK8
+      "subs %[n], %[n], #1\n"
+      "b.ne 1b\n"
+      "smstop\n"
+      : [n] "+r"(iterations)
+      :
+      : "cc", "memory",
+        "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15");
+}
+
 // ---------------------------------------------------------------------------
 
 struct Variant {
@@ -130,9 +207,11 @@ int main() {
   constexpr uint64_t mopas_per_iter = 64;
 
   Variant variants[] = {
-      {"f32  FMOPA (rank-1)", run_f32, 1},
-      {"f16  FMOPA (rank-2)", run_f16, 2},
-      {"i8   SMOPA (rank-4)", run_i8,  4},
+      {"f32  FMOPA (rank-1)",       run_f32,           1},
+      {"bf16 BFMOPA (rank-2)",      run_bf16,          2},
+      {"f16  FMOPA (rank-2)",       run_f16,           2},
+      {"i8   SMOPA (rank-4)",       run_i8,            4},
+      {"i8   s4-unpack+SMOPA",      run_i8_s4_unpack,  4},
   };
 
   for (auto& v : variants) {

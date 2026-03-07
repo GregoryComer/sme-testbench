@@ -14,6 +14,7 @@ void gemm_qd8p_qb4wp_f32_4vlxvl_kernel(
     const void* lhs_packed,
     const void* rhs_packed,
     float* out,
-    const BlockQuantParams& qp) __arm_streaming __arm_inout("za");
+    const BlockQuantParams& qp,
+    float* scratch) __arm_streaming __arm_inout("za");
 
 }  // namespace sme
