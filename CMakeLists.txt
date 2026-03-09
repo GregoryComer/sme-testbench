@@ -46,10 +46,10 @@ set_source_files_properties(
   PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
 )
 
-# f16 widening FMOPA kernel needs SME2 (for svmopa_za32_f16_m).
+# f16 widening FMOPA kernel (svmopa_za32_f16_m is SME1).
 set_source_files_properties(
   src/gemm_qd8_qb4w_2vlx2vl_f16mopa.cpp
-  PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme2"
+  PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
 )
 
 # ---------- dependencies ----------

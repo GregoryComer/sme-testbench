@@ -5,7 +5,7 @@
 // weights by their per-group scale (as f16), and uses svmopa_za32_f16_m
 // (f16→f32 widening FMOPA, rank-2) to accumulate directly into f32 ZA tiles
 // across all groups with no per-group ZA manipulation.
-// Compiled with -march=armv8-a+sme2; do not include from non-SME TUs.
+// Compiled with -march=armv8-a+sme; do not include from non-SME TUs.
 
 #include "gemm.h"
 
