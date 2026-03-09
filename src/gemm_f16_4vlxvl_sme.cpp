@@ -19,10 +19,6 @@ static size_t svl_f32() {
 
 GemmPackingParams gemm_f16_4vlxvl_packing_params() {
   size_t vl = svl_f32();
-  // FMOPA za32 f16 is rank-2: each instruction processes 2 K values.
-  // LHS tiles: 4*vl rows × 2 cols (4 subtiles of vl rows, each holding
-  //   2 f16 values per row in packed order).
-  // RHS tiles: 2 rows × vl cols, transposed for contiguous f16 vector loads.
   return {
       .lhs = {.tile_rows = vl * 4, .tile_cols = 2,
               .transpose_inner = false, .transpose_outer = false},
@@ -31,10 +27,7 @@ GemmPackingParams gemm_f16_4vlxvl_packing_params() {
   };
 }
 
-// 4x1 micro-kernel for f16 GEMM with f32 accumulation.
-// Tile mapping: ZA0..ZA3 = 4 M-sub-tiles x 1 N-tile.
-// Each FMOPA processes 2 K values (rank-2 widening f16→f32).
-// M epilogue handles remainder with a 1x1 loop (ZA0 only).
+// F16 activations, weight, and output. SME1. 2SVL_h x SVL_h tiling.
 void gemm_f16p_f16p_f16_4vlxvl_kernel(
     const GemmParams& p, const void* lhs_packed, const void* rhs_packed,
     _Float16* out) __arm_streaming __arm_inout("za") {
@@ -107,8 +100,6 @@ void gemm_f16p_f16p_f16_4vlxvl_kernel(
     }
   }
 
-  // M epilogue: remaining rows (< 4*vl), processed vl rows at a time
-  // using a 1x1 predicated micro-kernel (ZA0 only).
   if (m_body < p.M) {
     const float16_t* lhs_m =
         lhs_base + (m_body / (vl_f32 * 4)) * K_padded * vl_f32 * 4;

@@ -12,9 +12,6 @@ static size_t svl_f32() {
 
 GemmPackingParams gemm_qd8_qc4w_4vlxvl_packing_params() {
   size_t vl = svl_f32();
-  // LHS: same as qc8w_4vlxvl — int8 activations, rank-4 SMOPA layout.
-  // RHS: same tile dims as qc8w, but pack_s4 pairs two consecutive K-tiles
-  //   into each svcntb-byte block (lower nibble = k-tile 2i, upper = k-tile 2i+1).
   return {
       .lhs = {.tile_rows = vl * 4, .tile_cols = 4,
               .transpose_inner = false, .transpose_outer = false},
@@ -32,7 +29,6 @@ void gemm_qd8p_qc4wp_f32_4vlxvl_kernel(
   auto p_K_padded = (p.K + 3) & ~0x3;  // Round up to k-tile size (4)
   svbool_t pg = svptrue_b8();
 
-  // --- Full M-tile loop (4 subtiles) ----------------------------------------
   for (; m + (svcntw() * 4) <= p.M; m += svcntw() * 4) {
     auto rhs_data = static_cast<const int8_t*>(rhs_packed);
 
@@ -93,7 +89,6 @@ void gemm_qd8p_qc4wp_f32_4vlxvl_kernel(
         rhs_data += svcntb();
       }
 
-      // --- Epilogue: dequantize and store ---
       auto a_scale = svdup_n_f32(qp.a_scale);
       auto w_scales0 = svld1_f32(pg, &qp.w_scales[n]);
       auto scales0 = svmul_f32_x(pg, w_scales0, a_scale);
@@ -136,7 +131,6 @@ void gemm_qd8p_qc4wp_f32_4vlxvl_kernel(
     lhs += svcntb() * p_K_padded;
   }
 
-  // --- Partial M-tile loop (1 subtile) --------------------------------------
   for (; m < p.M; m += svcntw()) {
     auto rhs_data = static_cast<const int8_t*>(rhs_packed);
 
@@ -171,7 +165,6 @@ void gemm_qd8p_qc4wp_f32_4vlxvl_kernel(
         rhs_data += svcntb();
       }
 
-      // --- Epilogue ---
       auto a_scale = svdup_n_f32(qp.a_scale);
       auto w_scales0 = svld1_f32(pg, &qp.w_scales[n]);
       auto scales0 = svmul_f32_x(pg, w_scales0, a_scale);

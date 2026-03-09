@@ -27,11 +27,7 @@ GemmPackingParams gemm_f32_4vlxvl_packing_params() {
   };
 }
 
-// Unrolled 4x1 micro-kernel. Tile mapping:
-//   ZA0=(m0,n0), ZA1=(m1,n0), ZA2=(m2,n0), ZA3=(m3,n0).
-// Each K step: 4 LHS loads + 1 RHS load = 5 loads for 4 FMOPA.
-// M epilogue handles the remainder with a 1×1 predicated loop.
-// N-tail is handled via a store predicate.
+// F32 activations, weight, and output. SME1. 4SVL_s x SVL_s tiling.
 void gemm_f32p_f32p_f32_4vlxvl_kernel(
     const GemmParams& p, const void* lhs_packed, const void* rhs_packed,
     float* out) __arm_streaming __arm_inout("za") {
@@ -95,9 +91,6 @@ void gemm_f32p_f32p_f32_4vlxvl_kernel(
     }
   }
 
-  // M epilogue: remaining rows (< 4*vl), processed vl rows at a time
-  // using a 1×1 predicated micro-kernel (ZA0 only).
-  // The packed LHS tile is zero-padded by the packer so reads are safe.
   if (m_body < p.M) {
     const float* lhs_m = lhs_base + (m_body / (vl * 4)) * p.K * vl * 4;
 

@@ -12,10 +12,6 @@ static size_t svl_f32() {
 
 GemmPackingParams gemm_qd8_qc8w_2vlx2vl_packing_params() {
   size_t vl = svl_f32();
-  // SMOPA za32 s8 is rank-4: each instruction processes 4 K values.
-  // LHS tiles: 2*vl rows x 4 cols (2 subtiles of vl rows, each holding
-  //   4 int8 values per row in packed order).
-  // RHS tiles: 4 rows x vl cols, transposed for contiguous int8 vector loads.
   return {
       .lhs = {.tile_rows = vl * 2, .tile_cols = 4,
               .transpose_inner = false, .transpose_outer = false},
@@ -24,10 +20,7 @@ GemmPackingParams gemm_qd8_qc8w_2vlx2vl_packing_params() {
   };
 }
 
-// 2x2 micro-kernel for qd8xqc8w->f32 GEMM with s32 accumulation.
-// Tile mapping: ZA0=(m0,n0), ZA1=(m1,n0), ZA2=(m0,n1), ZA3=(m1,n1).
-// Each SMOPA processes 4 K values (rank-4 widening s8->s32).
-// M epilogue handles remainder with a 1x1 loop (ZA0 only).
+// INT8 activations, per-channel INT8 weight, F32 output. SME1. 2SVL_s x 2SVL_s tiling.
 void gemm_qd8p_qc8wp_f32_2vlx2vl_kernel(
     const GemmParams& p, const void* lhs_packed, const void* rhs_packed,
     float* out, const QuantParams& qp) __arm_streaming __arm_inout("za") {

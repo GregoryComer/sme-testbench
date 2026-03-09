@@ -12,10 +12,6 @@ static size_t svl_f32() {
 
 GemmPackingParams gemm_qd8_qc8w_4vlxvl_packing_params() {
   size_t vl = svl_f32();
-  // SMOPA za32 u8/s8 is rank-4: each instruction processes 4 K values.
-  // LHS tiles: 4*vl rows × 4 cols (4 subtiles of vl rows, each holding
-  //   4 uint8 values per row in packed order).
-  // RHS tiles: 4 rows × vl cols, transposed for contiguous int8 vector loads.
   return {
       .lhs = {.tile_rows = vl * 4, .tile_cols = 4,
               .transpose_inner = false, .transpose_outer = false},

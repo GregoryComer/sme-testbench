@@ -14,8 +14,6 @@ static size_t svl_f32() {
 
 GemmPackingParams gemm_qd8_qb4w_4vlxvl_packing_params() {
   size_t vl = svl_f32();
-  // Identical to qc4w: int8 LHS with rank-4 SMOPA layout,
-  // nibble-packed RHS with transposed tile order.
   return {
       .lhs = {.tile_rows = vl * 4, .tile_cols = 4,
               .transpose_inner = false, .transpose_outer = false},
@@ -40,7 +38,6 @@ void gemm_qd8p_qb4wp_f32_4vlxvl_kernel(
 
   svbool_t pg = svptrue_b8();
 
-  // --- Full M-tile loop (4 subtiles) ----------------------------------------
   for (; m + (svcntw() * 4) <= p.M; m += svcntw() * 4) {
     auto rhs_data = static_cast<const int8_t*>(rhs_packed);
     auto scale_data = qp.w_scales;
@@ -139,7 +136,6 @@ void gemm_qd8p_qb4wp_f32_4vlxvl_kernel(
         }
       }
        
-      // --- Epilogue ---
       auto a_scale = svdup_n_f32(qp.a_scale);
       auto ksums0 = svld1_f32(pg, &qp.w_ksums[n]);
       auto zp_f32 = svcvt_f32_s32_x(pg, svdup_n_s32(static_cast<int32_t>(qp.a_zero_point)));
@@ -184,7 +180,6 @@ void gemm_qd8p_qb4wp_f32_4vlxvl_kernel(
     lhs += svcntb() * p_K_padded;
   }
   
-  // --- Partial M-tile loop (1 subtile) --------------------------------------
   for (; m < p.M; m += svcntw()) {
     auto rhs_data = static_cast<const int8_t*>(rhs_packed);
     auto scale_data = qp.w_scales;
@@ -235,7 +230,6 @@ void gemm_qd8p_qb4wp_f32_4vlxvl_kernel(
         }
       }
        
-      // --- Epilogue ---
       auto a_scale = svdup_n_f32(qp.a_scale);
       auto ksums0 = svld1_f32(pg, &qp.w_ksums[n]);
       auto zp_f32 = svcvt_f32_s32_x(pg, svdup_n_s32(static_cast<int32_t>(qp.a_zero_point)));

@@ -1,11 +1,5 @@
 #pragma once
 
-// Internal header for the 2x2 qd8×qb4w→f32 SME kernel with 2-level block scales.
-// Pre-multiplies expanded int4 weights by int8 inner scale before SMOPA.
-// All 4 ZA tiles used for int32 SMOPA accumulation (2M × 2N).
-// Outer f32 accumulator spills to the output buffer.
-// Compiled with -march=armv8-a+sme; do not include from non-SME TUs.
-
 #include "gemm.h"
 
 namespace sme {

@@ -38,13 +38,11 @@ void gemm_qd8p_qb4wp_f32_2vlx2vl_kernel(
   svbool_t pg = svptrue_b8();
   size_t m = 0;
 
-  // --- Full 2x2 body (2 M-subtiles × 2 N-subtiles) --------------------------
   for (; m + svcntw() * 2 <= p.M; m += svcntw() * 2) {
     size_t n = 0;
     auto rhs_col = rhs_base;
     const float* scale_col = qp.w_scales;
 
-    // -- 2x2 N loop --
     for (; n + svcntw() * 2 <= p.N; n += svcntw() * 2) {
       auto lhs_data = lhs;
       auto r0 = rhs_col;
@@ -115,7 +113,6 @@ void gemm_qd8p_qb4wp_f32_2vlx2vl_kernel(
         }
       }
 
-      // Epilogue: subtract scaled ksums, multiply a_scale.
       auto a_scale = svdup_n_f32(qp.a_scale);
       auto zp_f32 = svcvt_f32_s32_x(pg, svdup_n_s32(static_cast<int32_t>(qp.a_zero_point)));
       auto scaled_ksums0 = svmul_f32_x(pg, svld1_f32(pg, &qp.w_ksums[n]), zp_f32);
@@ -141,7 +138,6 @@ void gemm_qd8p_qb4wp_f32_2vlx2vl_kernel(
       scale_col += 2 * blocks * svcntw();
     }
 
-    // -- 2x1 N-tail (remaining columns after 2x2 body) --
     for (; n < p.N; n += svcntw()) {
       auto lhs_data = lhs;
       auto r0 = rhs_col;
@@ -212,7 +208,6 @@ void gemm_qd8p_qb4wp_f32_2vlx2vl_kernel(
     lhs += 2 * svcntb() * (K_pad / 4);
   }
 
-  // --- M-tail 1x1 (remaining rows) ------------------------------------------
   for (; m < p.M; m += svcntw()) {
     auto rhs_col = rhs_base;
     const float* scale_col = qp.w_scales;

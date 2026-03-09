@@ -12,10 +12,6 @@ static size_t svl_f32() {
 
 GemmPackingParams gemm_bf16_4vlxvl_packing_params() {
   size_t vl = svl_f32();
-  // BFMOPA za32 bf16 is rank-2: each instruction processes 2 K values.
-  // LHS tiles: 4*vl rows × 2 cols (4 subtiles of vl rows, each holding
-  //   2 bf16 values per row in packed order).
-  // RHS tiles: 2 rows × vl cols, transposed for contiguous bf16 vector loads.
   return {
       .lhs = {.tile_rows = vl * 4, .tile_cols = 2,
               .transpose_inner = false, .transpose_outer = false},
@@ -24,10 +20,7 @@ GemmPackingParams gemm_bf16_4vlxvl_packing_params() {
   };
 }
 
-// 4x1 micro-kernel for bf16 GEMM with f32 accumulation.
-// Tile mapping: ZA0..ZA3 = 4 M-sub-tiles x 1 N-tile.
-// Each BFMOPA processes 2 K values (rank-2 widening bf16→f32).
-// M epilogue handles remainder with a 1x1 loop (ZA0 only).
+// BF16 activations, weight, and outputs. SME1. 2SVL_h x SVL_h tiling.
 void gemm_bf16p_bf16p_bf16_4vlxvl_kernel(
     const GemmParams& p, const void* lhs_packed, const void* rhs_packed,
     __bf16* out) __arm_streaming __arm_inout("za") {

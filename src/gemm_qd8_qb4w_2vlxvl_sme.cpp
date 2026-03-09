@@ -21,19 +21,7 @@ GemmPackingParams gemm_qd8_qb4w_2vlxvl_packing_params() {
   };
 }
 
-// ZA tile allocation:
-//   ZA0 (int32): SMOPA accumulator for M-subtile 0
-//   ZA1 (int32): SMOPA accumulator for M-subtile 1
-//   ZA2 (float32): cross-group accumulator for M-subtile 0
-//   ZA3 (float32): cross-group accumulator for M-subtile 1
-//
-// After each group's SMOPA inner loop, the int32 results in ZA0/ZA1 are
-// converted to float, scaled by the group weight scale, and accumulated
-// into ZA2/ZA3.  ZA0/ZA1 are then zeroed for the next group.
-//
-// This eliminates all memory traffic between groups — the intermediate
-// float accumulation stays entirely in ZA tiles until the final epilogue.
-
+// INT8 activations, blockwise INT4 weight, F32 output. SME1. 2SVL_s x SVL_s tiling.
 void gemm_qd8p_qb4wp_f32_2vlxvl_kernel(
     const GemmParams& p,
     const void* lhs_packed,
@@ -53,7 +41,6 @@ void gemm_qd8p_qb4wp_f32_2vlxvl_kernel(
   auto zero_f32 = svdup_n_f32(0.0f);
   size_t m = 0;
 
-  // --- Full 2x1 body (2 M-subtiles × 1 N-subtile) ----------------------------
   for (; m + svcntw() * 2 <= p.M; m += svcntw() * 2) {
     auto rhs_col = rhs_base;
     const float* scale_col = qp.w_scales;
@@ -107,7 +94,6 @@ void gemm_qd8p_qb4wp_f32_2vlxvl_kernel(
         }
       }
 
-      // Epilogue: read ZA2/ZA3, apply ksums + a_scale, store to output.
       auto a_scale = svdup_n_f32(qp.a_scale);
       auto zp_f32 = svcvt_f32_s32_x(pg,
           svdup_n_s32(static_cast<int32_t>(qp.a_zero_point)));
@@ -130,7 +116,6 @@ void gemm_qd8p_qb4wp_f32_2vlxvl_kernel(
     lhs += 2 * svcntb() * (K_pad / 4);
   }
 
-  // --- M-tail 1x1 (remaining rows) -------------------------------------------
   for (; m < p.M; m += svcntw()) {
     auto rhs_col = rhs_base;
     const float* scale_col = qp.w_scales;

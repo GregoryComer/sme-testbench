@@ -21,22 +21,7 @@ GemmPackingParams gemm_qd8_qb4w2l_2vlxvl_packing_params() {
   };
 }
 
-// ZA tile allocation (2M x 2N):
-//   ZA0 (int32): M-subtile 0 x N-subtile 0
-//   ZA1 (int32): M-subtile 1 x N-subtile 0
-//   ZA2 (int32): M-subtile 0 x N-subtile 1
-//   ZA3 (int32): M-subtile 1 x N-subtile 1
-//
-// Per outer block: zero all ZA tiles, then for each inner block within:
-//   - Expand int4 weights to int8
-//   - Multiply by int8 inner_scale replicated 4x (matching SMOPA K-lane layout)
-//   - SMOPA pre-scaled weights with int8 activations into all 4 ZA tiles
-//   - Do NOT zero ZA between inner blocks (accumulate across entire outer block)
-// After all inner blocks:
-//   - Read ZA rows, convert int32 -> f32, multiply by outer f32 scale
-//   - Write (first outer block) or FMA (subsequent) to the output buffer
-// Final epilogue: subtract scaled ksums and multiply by a_scale.
-
+// INT8 activations, 2-level blockwise INT4 weight, F32 output. SME1. 2SVL_s x 2SVL_s tiling.
 void gemm_qd8p_qb4w2lp_f32_2vlxvl_kernel(
     const GemmParams& p,
     const void* lhs_packed,
@@ -60,14 +45,12 @@ void gemm_qd8p_qb4w2lp_f32_2vlxvl_kernel(
 
   size_t m = 0;
 
-  // --- Full 2x2 body (2 M-subtiles x 2 N-subtiles) --------------------------
   for (; m + svcntw() * 2 <= p.M; m += svcntw() * 2) {
     size_t n = 0;
     auto rhs_col = rhs_base;
     const int8_t* inner_scale_col = qp.inner_scales;
     const float* outer_scale_col = qp.outer_scales;
 
-    // -- 2x2 N loop --
     for (; n + svcntw() * 2 <= p.N; n += svcntw() * 2) {
       auto lhs_data = lhs;
       auto r0 = rhs_col;
@@ -163,7 +146,6 @@ void gemm_qd8p_qb4w2lp_f32_2vlxvl_kernel(
         }
       }
 
-      // Epilogue: subtract scaled ksums, multiply a_scale.
       auto a_scale = svdup_n_f32(qp.a_scale);
       auto zp_f32 = svcvt_f32_s32_x(pg32,
           svdup_n_s32(static_cast<int32_t>(qp.a_zero_point)));
@@ -191,7 +173,6 @@ void gemm_qd8p_qb4w2lp_f32_2vlxvl_kernel(
       outer_scale_col += 2 * num_outer * svcntw();
     }
 
-    // -- 2x1 N-tail (remaining columns after 2x2 body) --
     for (; n < p.N; n += svcntw()) {
       auto lhs_data = lhs;
       auto r0 = rhs_col;
@@ -276,7 +257,6 @@ void gemm_qd8p_qb4w2lp_f32_2vlxvl_kernel(
     lhs += 2 * svcntb() * (K_pad / 4);
   }
 
-  // --- M-tail 1x1 (remaining rows) ------------------------------------------
   for (; m < p.M; m += svcntw()) {
     auto rhs_col = rhs_base;
     const int8_t* inner_scale_col = qp.inner_scales;

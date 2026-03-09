@@ -1,8 +1,5 @@
 #pragma once
 
-// Internal header for the 2x2 f16 SME kernel. Not part of the public API.
-// Compiled with -march=armv8-a+sme; do not include from non-SME TUs.
-
 #include "gemm.h"
 
 namespace sme {

@@ -13,10 +13,6 @@ static size_t svl_f32() {
 
 GemmPackingParams gemm_f16_2vlx2vl_packing_params() {
   size_t vl = svl_f32();
-  // FMOPA za32 f16 is rank-2: each instruction processes 2 K values.
-  // LHS tiles: 2*vl rows x 2 cols (2 subtiles of vl rows, each holding
-  //   2 f16 values per row in packed order).
-  // RHS tiles: 2 rows x vl cols, transposed for contiguous f16 vector loads.
   return {
       .lhs = {.tile_rows = vl * 2, .tile_cols = 2,
               .transpose_inner = false, .transpose_outer = false},
@@ -25,20 +21,16 @@ GemmPackingParams gemm_f16_2vlx2vl_packing_params() {
   };
 }
 
-// 2x2 micro-kernel for f16 GEMM with f32 accumulation.
-// Tile mapping: ZA0=(m0,n0), ZA1=(m1,n0), ZA2=(m0,n1), ZA3=(m1,n1).
-// Each FMOPA processes 2 K values (rank-2 widening f16->f32).
-// M epilogue handles remainder with a 1x1 loop (ZA0 only).
 void gemm_f16p_f16p_f16_2vlx2vl_kernel(
     const GemmParams& p, const void* lhs_packed, const void* rhs_packed,
     _Float16* out) __arm_streaming __arm_inout("za") {
 
   const auto* lhs_base = static_cast<const float16_t*>(lhs_packed);
   const auto* rhs_base = static_cast<const float16_t*>(rhs_packed);
-  const uint64_t vl = svcnth();        // f16 elements per vector
-  const uint64_t vl32 = svcntw();      // f32 elements per vector
+  const uint64_t vl = svcnth();
+  const uint64_t vl32 = svcntw();
   const uint64_t K_pad = (p.K + 1) & ~1ULL;
-  const uint64_t rhs_n_stride = K_pad * vl32;  // f16 elements between N-tiles
+  const uint64_t rhs_n_stride = K_pad * vl32;
 
   const svbool_t pg16 = svptrue_b16();
   const svbool_t pg32 = svptrue_b32();
@@ -92,7 +84,6 @@ void gemm_f16p_f16p_f16_2vlx2vl_kernel(
       rhs_col += 2 * rhs_n_stride;
     }
 
-    // N-tail: 2x1
     for (; n < p.N; n += vl32) {
       svzero_za();
       const float16_t* ld = lhs_m;
@@ -120,7 +111,6 @@ void gemm_f16p_f16p_f16_2vlx2vl_kernel(
     }
   }
 
-  // M epilogue: 1x1
   for (; m < p.M; m += vl32) {
     const float16_t* lhs_m = lhs_base + (m / (vl32 * 2)) * K_pad * vl32 * 2
                                          + (m % (vl32 * 2)) * 2;

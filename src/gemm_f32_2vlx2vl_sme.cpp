@@ -21,10 +21,7 @@ GemmPackingParams gemm_f32_2vlx2vl_packing_params() {
   };
 }
 
-// 2x2 micro-kernel for f32 GEMM.
-// Tile mapping: ZA0=(m0,n0), ZA1=(m1,n0), ZA2=(m0,n1), ZA3=(m1,n1).
-// Each K step: 2 LHS loads + 2 RHS loads = 4 loads for 4 FMOPA.
-// M epilogue handles remainder with a 1x1 predicated loop (ZA0 only).
+// F32 activations, weight, and output. SME1. 2SVL_s x 2SVL_s tiling.
 void gemm_f32p_f32p_f32_2vlx2vl_kernel(
     const GemmParams& p, const void* lhs_packed, const void* rhs_packed,
     float* out) __arm_streaming __arm_inout("za") {
@@ -75,7 +72,6 @@ void gemm_f32p_f32p_f32_2vlx2vl_kernel(
       }
     }
 
-    // N-tail: 2x1
     for (; n < p.N; n += vl) {
       const float* rhs_n0 = rhs_base + (n / vl) * p.K * vl;
       svzero_za();
@@ -96,7 +92,6 @@ void gemm_f32p_f32p_f32_2vlx2vl_kernel(
     }
   }
 
-  // M epilogue: 1x1
   for (; m < p.M; m += vl) {
     const float* lhs_m = lhs_base + (m / (vl * 2)) * p.K * vl * 2
                                     + (m % (vl * 2));
