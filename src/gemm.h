@@ -180,6 +180,13 @@ void gemm_qd8p_qb4wp_f32_2vlxvl(
     float* out,
     const BlockQuantParams& qp);
 
+void gemm_qd8p_qb4wp_f32_2vlx2vl_f16mopa(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    float* out,
+    const BlockQuantParams& qp);
+
 void gemm_qd8_qb4w_f32_reference(
     const GemmParams& p,
     const int8_t* lhs,

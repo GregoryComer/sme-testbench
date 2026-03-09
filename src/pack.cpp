@@ -428,4 +428,116 @@ void pack_s4(const int8_t* data, size_t rows, size_t cols,
   }
 }
 
+// ---------- deinterleaved packing for FMOPA rank-2 ---------------------------
+//
+// Within each subtile (tile_rows/2 rows × tile_cols=4 cols), the standard
+// layout stores [r0_k0, r0_k1, r0_k2, r0_k3, r1_k0, ...].  The deinterleaved
+// layout stores k01 for all rows first, then k23:
+//   [r0_k0, r0_k1, r1_k0, r1_k1, ..., r0_k2, r0_k3, r1_k2, r1_k3, ...]
+// After svunpklo/svunpkhi the two K-pairs land in separate f16 vectors
+// directly usable by rank-2 FMOPA without a UZP step.
+
+void pack_s8_deinterleaved(const int8_t* data, size_t rows, size_t cols,
+                           const PackingParams& params, void* out) {
+  size_t tile_r = params.tile_rows;
+  size_t tile_c = params.tile_cols;  // must be 4
+  size_t sub_r = tile_r / 2;
+
+  size_t out_row_tiles = (rows + tile_r - 1) / tile_r;
+  size_t out_col_tiles = (cols + tile_c - 1) / tile_c;
+
+  auto* dst = static_cast<int8_t*>(out);
+
+  for (size_t rt = 0; rt < out_row_tiles; rt++) {
+    for (size_t ct = 0; ct < out_col_tiles; ct++) {
+      for (size_t sub = 0; sub < 2; sub++) {
+        // First half: k0, k1 for all rows in this subtile.
+        for (size_t r = 0; r < sub_r; r++) {
+          size_t row = rt * tile_r + sub * sub_r + r;
+          for (size_t k = 0; k < 2; k++) {
+            size_t col = ct * tile_c + k;
+            *dst++ = (row < rows && col < cols) ? data[row * cols + col] : 0;
+          }
+        }
+        // Second half: k2, k3 for all rows in this subtile.
+        for (size_t r = 0; r < sub_r; r++) {
+          size_t row = rt * tile_r + sub * sub_r + r;
+          for (size_t k = 2; k < 4; k++) {
+            size_t col = ct * tile_c + k;
+            *dst++ = (row < rows && col < cols) ? data[row * cols + col] : 0;
+          }
+        }
+      }
+    }
+  }
+}
+
+void pack_s4_deinterleaved(const int8_t* data, size_t rows, size_t cols,
+                           const PackingParams& params, void* out) {
+  size_t tile_r = params.tile_rows;
+  size_t tile_c = params.tile_cols;
+
+  size_t num_row_tiles = (rows + tile_r - 1) / tile_r;
+  size_t num_col_tiles = (cols + tile_c - 1) / tile_c;
+
+  size_t out_row_tiles = num_row_tiles;
+  size_t out_col_tiles = num_col_tiles;
+  if (params.transpose_outer) std::swap(out_row_tiles, out_col_tiles);
+
+  size_t out_tile_r = tile_r;
+  size_t out_tile_c = tile_c;
+  if (params.transpose_inner) std::swap(out_tile_r, out_tile_c);
+
+  size_t out_col_tile_pairs = (out_col_tiles + 1) / 2;
+
+  auto get_val = [&](size_t r_tile, size_t c_tile,
+                     size_t r_off, size_t c_off) -> int8_t {
+    size_t in_r_off = params.transpose_inner ? c_off : r_off;
+    size_t in_c_off = params.transpose_inner ? r_off : c_off;
+    size_t row, col;
+    if (params.transpose_outer) {
+      row = c_tile * tile_r + in_r_off;
+      col = r_tile * tile_c + in_c_off;
+    } else {
+      row = r_tile * tile_r + in_r_off;
+      col = c_tile * tile_c + in_c_off;
+    }
+    if (row < rows && col < cols) return data[row * cols + col];
+    return 0;
+  };
+
+  auto* dst = static_cast<uint8_t*>(out);
+
+  for (size_t r_tile = 0; r_tile < out_row_tiles; r_tile++) {
+    for (size_t c_pair = 0; c_pair < out_col_tile_pairs; c_pair++) {
+      size_t c_tile_lo = c_pair * 2;
+      size_t c_tile_hi = c_pair * 2 + 1;
+
+      // First half: k0, k1 (c_off 0..1) for all spatial positions.
+      for (size_t r_off = 0; r_off < out_tile_r; r_off++) {
+        for (size_t c_off = 0; c_off < 2; c_off++) {
+          int8_t val0 = get_val(r_tile, c_tile_lo, r_off, c_off);
+          int8_t val1 = (c_tile_hi < out_col_tiles)
+                            ? get_val(r_tile, c_tile_hi, r_off, c_off)
+                            : 0;
+          *dst++ = (static_cast<uint8_t>(val0) & 0xF) |
+                   ((static_cast<uint8_t>(val1) & 0xF) << 4);
+        }
+      }
+
+      // Second half: k2, k3 (c_off 2..3) for all spatial positions.
+      for (size_t r_off = 0; r_off < out_tile_r; r_off++) {
+        for (size_t c_off = 2; c_off < out_tile_c; c_off++) {
+          int8_t val0 = get_val(r_tile, c_tile_lo, r_off, c_off);
+          int8_t val1 = (c_tile_hi < out_col_tiles)
+                            ? get_val(r_tile, c_tile_hi, r_off, c_off)
+                            : 0;
+          *dst++ = (static_cast<uint8_t>(val0) & 0xF) |
+                   ((static_cast<uint8_t>(val1) & 0xF) << 4);
+        }
+      }
+    }
+  }
+}
+
 }  // namespace sme

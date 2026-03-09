@@ -47,6 +47,11 @@ void gemm_qd8p_qb4wp_f32_2vlx2vl_kernel(const GemmParams& p, const void* lhs_pac
 void gemm_qd8p_qb4wp_f32_2vlxvl_kernel(const GemmParams& p, const void* lhs_packed,
                                         const void* rhs_packed, float* out,
                                         const BlockQuantParams& qp);
+
+// qb4w 2vlx2vl f16mopa (locally streaming, called from non-streaming orchestrator)
+void gemm_qd8p_qb4wp_f32_2vlx2vl_f16mopa_kernel(const GemmParams& p, const void* lhs_packed,
+                                                  const void* rhs_packed, float* out,
+                                                  const BlockQuantParams& qp);
 }
 
 namespace sme {
@@ -164,6 +169,14 @@ void gemm_qd8p_qb4wp_f32_2vlxvl(const GemmParams& p, const void* lhs_packed,
   asm volatile("smstart" ::: "memory");
   gemm_qd8p_qb4wp_f32_2vlxvl_kernel(p, lhs_packed, rhs_packed, out, qp);
   asm volatile("smstop" ::: "memory");
+}
+
+// ---------- qb4w 2vlx2vl f16mopa (f16 widening FMOPA) -------------------------
+
+void gemm_qd8p_qb4wp_f32_2vlx2vl_f16mopa(const GemmParams& p, const void* lhs_packed,
+                                            const void* rhs_packed, float* out,
+                                            const BlockQuantParams& qp) {
+  gemm_qd8p_qb4wp_f32_2vlx2vl_f16mopa_kernel(p, lhs_packed, rhs_packed, out, qp);
 }
 
 }  // namespace sme

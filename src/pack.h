@@ -92,4 +92,16 @@ size_t packed_size_bytes_s4(size_t rows, size_t cols, const PackingParams& param
 void pack_s4(const int8_t* data, size_t rows, size_t cols,
              const PackingParams& params, void* out);
 
+// ---------- deinterleaved packing for FMOPA rank-2 ---------------------------
+// These produce the same total output size as the standard pack functions, but
+// rearrange data within each tile so that K-pairs (k0,k1) occupy the first
+// half and (k2,k3) the second half.  After svunpklo/svunpkhi + svcvt the data
+// is directly usable by rank-2 FMOPA without a UZP step.
+
+void pack_s8_deinterleaved(const int8_t* data, size_t rows, size_t cols,
+                           const PackingParams& params, void* out);
+
+void pack_s4_deinterleaved(const int8_t* data, size_t rows, size_t cols,
+                           const PackingParams& params, void* out);
+
 }  // namespace sme
