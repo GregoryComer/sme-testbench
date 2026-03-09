@@ -171,6 +171,15 @@ void gemm_qd8p_qb4wp_f32_2vlx2vl(
     float* out,
     const BlockQuantParams& qp);
 
+GemmPackingParams gemm_qd8_qb4w_2vlxvl_packing_params();
+
+void gemm_qd8p_qb4wp_f32_2vlxvl(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    float* out,
+    const BlockQuantParams& qp);
+
 void gemm_qd8_qb4w_f32_reference(
     const GemmParams& p,
     const int8_t* lhs,

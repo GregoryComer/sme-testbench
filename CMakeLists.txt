@@ -20,6 +20,7 @@ add_library(sme_kernels
   src/gemm_qd8_qc4w_4vlxvl_sme.cpp
   src/gemm_qd8_qb4w_4vlxvl_sme.cpp
   src/gemm_qd8_qb4w_2vlx2vl_sme.cpp
+  src/gemm_qd8_qb4w_2vlxvl_sme.cpp
   src/reference.cpp
 )
 target_include_directories(sme_kernels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -38,6 +39,7 @@ set_source_files_properties(
   src/gemm_qd8_qc4w_4vlxvl_sme.cpp
   src/gemm_qd8_qb4w_4vlxvl_sme.cpp
   src/gemm_qd8_qb4w_2vlx2vl_sme.cpp
+  src/gemm_qd8_qb4w_2vlxvl_sme.cpp
   PROPERTIES COMPILE_OPTIONS "-march=armv8-a+sme"
 )
 

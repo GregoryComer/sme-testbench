@@ -232,4 +232,42 @@ INSTANTIATE_TEST_SUITE_P(PartialTiles, GemmQd8Qb4w_2vlx2vlTest,
         GemmShape{80, 33, 96}, GemmShape{129, 33, 64}),
     shape_name);
 
+// --- 2vlxvl (2x1 SMOPA + ZA float accum) ------------------------------------
+
+class GemmQd8Qb4w_2vlxvlTest : public ::testing::TestWithParam<GemmShape> {};
+
+TEST_P(GemmQd8Qb4w_2vlxvlTest, MatchesReference) {
+  auto [M, N, K] = GetParam();
+  run_qd8_qb4w_test(M, N, K, sme::gemm_qd8_qb4w_2vlxvl_packing_params,
+      [](const sme::GemmParams& p, const void* lhs, const void* rhs,
+         float* out, const sme::BlockQuantParams& qp, float*) {
+        sme::gemm_qd8p_qb4wp_f32_2vlxvl(p, lhs, rhs, out, qp);
+      });
+}
+
+INSTANTIATE_TEST_SUITE_P(EpilogueSingleTile, GemmQd8Qb4w_2vlxvlTest,
+    ::testing::Values(GemmShape{16, 16, 32}, GemmShape{16, 16, 64}, GemmShape{16, 16, 128}),
+    shape_name);
+
+INSTANTIATE_TEST_SUITE_P(EpilogueStrides, GemmQd8Qb4w_2vlxvlTest,
+    ::testing::Values(
+        GemmShape{32, 16, 32}, GemmShape{16, 32, 32}, GemmShape{32, 32, 32},
+        GemmShape{48, 16, 32}, GemmShape{32, 16, 64}, GemmShape{32, 32, 64}),
+    shape_name);
+
+INSTANTIATE_TEST_SUITE_P(MainBody, GemmQd8Qb4w_2vlxvlTest,
+    ::testing::Values(
+        GemmShape{64, 16, 32}, GemmShape{64, 32, 32}, GemmShape{64, 16, 128},
+        GemmShape{128, 16, 32}, GemmShape{128, 32, 64}, GemmShape{80, 16, 32},
+        GemmShape{96, 32, 64}, GemmShape{128, 128, 128}),
+    shape_name);
+
+INSTANTIATE_TEST_SUITE_P(PartialTiles, GemmQd8Qb4w_2vlxvlTest,
+    ::testing::Values(
+        GemmShape{17, 16, 32}, GemmShape{16, 17, 32}, GemmShape{16, 16, 64},
+        GemmShape{17, 17, 32}, GemmShape{33, 17, 64}, GemmShape{65, 16, 32},
+        GemmShape{64, 17, 32}, GemmShape{64, 16, 64}, GemmShape{65, 17, 64},
+        GemmShape{80, 33, 96}, GemmShape{129, 33, 64}),
+    shape_name);
+
 }  // namespace
