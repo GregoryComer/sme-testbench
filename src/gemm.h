@@ -209,9 +209,9 @@ struct BlockQuantParams2L {
   const float* w_ksums;        // N elements, precomputed across all groups
 };
 
-GemmPackingParams gemm_qd8_qb4w2l_2vlxvl_packing_params();
+GemmPackingParams gemm_qd8_qb4w2l_2vlx2vl_packing_params();
 
-void gemm_qd8p_qb4w2lp_f32_2vlxvl(
+void gemm_qd8p_qb4w2lp_f32_2vlx2vl(
     const GemmParams& p,
     const void* lhs_packed,
     const void* rhs_packed,

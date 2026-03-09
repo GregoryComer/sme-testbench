@@ -1,4 +1,4 @@
-#include "gemm_qd8_qb4w2l_2vlxvl_sme.h"
+#include "gemm_qd8_qb4w2l_2vlx2vl_sme.h"
 
 #include <algorithm>
 #include <arm_sme.h>
@@ -11,7 +11,7 @@ static size_t svl_f32() {
   return svl_bytes / sizeof(float);
 }
 
-GemmPackingParams gemm_qd8_qb4w2l_2vlxvl_packing_params() {
+GemmPackingParams gemm_qd8_qb4w2l_2vlx2vl_packing_params() {
   size_t vl = svl_f32();
   return {
       .lhs = {.tile_rows = vl * 2, .tile_cols = 4,
@@ -22,12 +22,28 @@ GemmPackingParams gemm_qd8_qb4w2l_2vlxvl_packing_params() {
 }
 
 // INT8 activations, 2-level blockwise INT4 weight, F32 output. SME1. 2SVL_s x 2SVL_s tiling.
-void gemm_qd8p_qb4w2lp_f32_2vlxvl_kernel(
+void gemm_qd8p_qb4w2lp_f32_2vlx2vl_kernel(
     const GemmParams& p,
     const void* lhs_packed,
     const void* rhs_packed,
     float* out,
     const BlockQuantParams2L& qp) __arm_streaming __arm_inout("za") {
+  /* 
+   * 2-level block scale kernel:
+   *
+   * Use two levels of scale - an inner 8-bit integer block scale and
+   * an outer floating point block scale. The inner scale is applied to the
+   * weights before MOPA, in order to allow accumulating multiple inner
+   * blocks in int32.
+   * 
+   * The floating point accumulator spills to memory - we accumulate directly
+   * into the output buffer. As long as outer block size is large (1024+), this
+   * is relatively cheap.
+   * 
+   * The advantage of this approach is that it allows keeping the full ZA
+   * array available for integer MOPAs without having to touch the spilled outer
+   * accumulator every block.
+   */
 
   auto lhs = static_cast<const int8_t*>(lhs_packed);
   auto rhs_base = static_cast<const int8_t*>(rhs_packed);

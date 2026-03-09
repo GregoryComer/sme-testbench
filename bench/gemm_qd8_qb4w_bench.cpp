@@ -339,7 +339,7 @@ void fill_random_s8_range(int8_t* buf, size_t n, unsigned seed, int lo, int hi) 
   for (size_t i = 0; i < n; ++i) buf[i] = static_cast<int8_t>(dist(rng));
 }
 
-void BM_gemm_qd8p_qb4w2lp_f32_2vlxvl(benchmark::State& state) {
+void BM_gemm_qd8p_qb4w2lp_f32_2vlx2vl(benchmark::State& state) {
   const size_t M = static_cast<size_t>(state.range(0));
   const size_t N = static_cast<size_t>(state.range(1));
   const size_t K = static_cast<size_t>(state.range(2));
@@ -348,7 +348,7 @@ void BM_gemm_qd8p_qb4w2lp_f32_2vlxvl(benchmark::State& state) {
 
   size_t num_inner = K / inner_group_size;
   size_t num_outer = K / outer_group_size;
-  auto pack = sme::gemm_qd8_qb4w2l_2vlxvl_packing_params();
+  auto pack = sme::gemm_qd8_qb4w2l_2vlx2vl_packing_params();
 
   std::vector<int8_t> A(M * K);
   std::vector<int8_t> B(K * N);
@@ -389,7 +389,7 @@ void BM_gemm_qd8p_qb4w2lp_f32_2vlxvl(benchmark::State& state) {
   sme::pack_s4(B.data(), K, N, pack.rhs, rhs_packed.get());
 
   for (auto _ : state) {
-    sme::gemm_qd8p_qb4w2lp_f32_2vlxvl(p, lhs_packed.get(), rhs_packed.get(), C.data(), qp);
+    sme::gemm_qd8p_qb4w2lp_f32_2vlx2vl(p, lhs_packed.get(), rhs_packed.get(), C.data(), qp);
     benchmark::DoNotOptimize(C.data());
     benchmark::ClobberMemory();
   }
@@ -421,7 +421,7 @@ void BM_gemm_qd8p_qb4w2lp_f32_2vlxvl(benchmark::State& state) {
     ->Args({M, N, K, 128, 2048})  \
     ->Args({M, N, K, 128, 4096})
 
-BENCHMARK(BM_gemm_qd8p_qb4w2lp_f32_2vlxvl)
+BENCHMARK(BM_gemm_qd8p_qb4w2lp_f32_2vlx2vl)
     OGS_SWEEP_32(1024, 1024, 4096)
     OGS_SWEEP_32(4096, 4096, 4096)
     OGS_SWEEP_32(1024, 4096, 4096)

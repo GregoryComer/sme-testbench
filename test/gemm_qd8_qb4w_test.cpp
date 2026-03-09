@@ -493,20 +493,20 @@ void run_qd8_qb4w2l_test(size_t M, size_t N, size_t K,
   }
 }
 
-class GemmQd8Qb4w2l_2vlxvlTest : public ::testing::TestWithParam<GemmShape2L> {};
+class GemmQd8Qb4w2l_2vlx2vlTest : public ::testing::TestWithParam<GemmShape2L> {};
 
-TEST_P(GemmQd8Qb4w2l_2vlxvlTest, MatchesReference) {
+TEST_P(GemmQd8Qb4w2l_2vlx2vlTest, MatchesReference) {
   auto [M, N, K, igs, ogs] = GetParam();
   run_qd8_qb4w2l_test(M, N, K, igs, ogs,
-      sme::gemm_qd8_qb4w2l_2vlxvl_packing_params,
+      sme::gemm_qd8_qb4w2l_2vlx2vl_packing_params,
       [](const sme::GemmParams& p, const void* lhs, const void* rhs,
          float* out, const sme::BlockQuantParams2L& qp) {
-        sme::gemm_qd8p_qb4w2lp_f32_2vlxvl(p, lhs, rhs, out, qp);
+        sme::gemm_qd8p_qb4w2lp_f32_2vlx2vl(p, lhs, rhs, out, qp);
       });
 }
 
 // inner=32, outer=128
-INSTANTIATE_TEST_SUITE_P(Inner32Outer128_SmallTile, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner32Outer128_SmallTile, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{16, 16, 128, 32, 128},
         GemmShape2L{16, 16, 256, 32, 128},
@@ -514,7 +514,7 @@ INSTANTIATE_TEST_SUITE_P(Inner32Outer128_SmallTile, GemmQd8Qb4w2l_2vlxvlTest,
         GemmShape2L{32, 32, 128, 32, 128}),
     shape2l_name);
 
-INSTANTIATE_TEST_SUITE_P(Inner32Outer128_MainBody, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner32Outer128_MainBody, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{64, 16, 128, 32, 128},
         GemmShape2L{128, 32, 256, 32, 128},
@@ -522,7 +522,7 @@ INSTANTIATE_TEST_SUITE_P(Inner32Outer128_MainBody, GemmQd8Qb4w2l_2vlxvlTest,
         GemmShape2L{128, 128, 512, 32, 128}),
     shape2l_name);
 
-INSTANTIATE_TEST_SUITE_P(Inner32Outer128_PartialTiles, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner32Outer128_PartialTiles, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{17, 16, 128, 32, 128},
         GemmShape2L{16, 17, 128, 32, 128},
@@ -532,7 +532,7 @@ INSTANTIATE_TEST_SUITE_P(Inner32Outer128_PartialTiles, GemmQd8Qb4w2l_2vlxvlTest,
     shape2l_name);
 
 // inner=32, outer=256
-INSTANTIATE_TEST_SUITE_P(Inner32Outer256, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner32Outer256, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{16, 16, 256, 32, 256},
         GemmShape2L{64, 32, 256, 32, 256},
@@ -541,7 +541,7 @@ INSTANTIATE_TEST_SUITE_P(Inner32Outer256, GemmQd8Qb4w2l_2vlxvlTest,
     shape2l_name);
 
 // inner=32, outer=512
-INSTANTIATE_TEST_SUITE_P(Inner32Outer512, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner32Outer512, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{16, 16, 512, 32, 512},
         GemmShape2L{128, 128, 1024, 32, 512},
@@ -549,7 +549,7 @@ INSTANTIATE_TEST_SUITE_P(Inner32Outer512, GemmQd8Qb4w2l_2vlxvlTest,
     shape2l_name);
 
 // inner=32, outer=1024
-INSTANTIATE_TEST_SUITE_P(Inner32Outer1024, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner32Outer1024, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{16, 16, 1024, 32, 1024},
         GemmShape2L{128, 128, 2048, 32, 1024},
@@ -557,7 +557,7 @@ INSTANTIATE_TEST_SUITE_P(Inner32Outer1024, GemmQd8Qb4w2l_2vlxvlTest,
     shape2l_name);
 
 // inner=128, outer=128 (degenerate: 1 inner per outer)
-INSTANTIATE_TEST_SUITE_P(Inner128Outer128, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner128Outer128, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{16, 16, 128, 128, 128},
         GemmShape2L{128, 128, 256, 128, 128},
@@ -565,7 +565,7 @@ INSTANTIATE_TEST_SUITE_P(Inner128Outer128, GemmQd8Qb4w2l_2vlxvlTest,
     shape2l_name);
 
 // inner=128, outer=256
-INSTANTIATE_TEST_SUITE_P(Inner128Outer256, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner128Outer256, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{16, 16, 256, 128, 256},
         GemmShape2L{128, 128, 512, 128, 256},
@@ -573,7 +573,7 @@ INSTANTIATE_TEST_SUITE_P(Inner128Outer256, GemmQd8Qb4w2l_2vlxvlTest,
     shape2l_name);
 
 // inner=128, outer=512
-INSTANTIATE_TEST_SUITE_P(Inner128Outer512, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner128Outer512, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{16, 16, 512, 128, 512},
         GemmShape2L{128, 128, 1024, 128, 512},
@@ -581,7 +581,7 @@ INSTANTIATE_TEST_SUITE_P(Inner128Outer512, GemmQd8Qb4w2l_2vlxvlTest,
     shape2l_name);
 
 // inner=128, outer=1024
-INSTANTIATE_TEST_SUITE_P(Inner128Outer1024, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner128Outer1024, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{16, 16, 1024, 128, 1024},
         GemmShape2L{128, 128, 2048, 128, 1024},
@@ -589,7 +589,7 @@ INSTANTIATE_TEST_SUITE_P(Inner128Outer1024, GemmQd8Qb4w2l_2vlxvlTest,
     shape2l_name);
 
 // inner=128, outer=4096
-INSTANTIATE_TEST_SUITE_P(Inner128Outer4096, GemmQd8Qb4w2l_2vlxvlTest,
+INSTANTIATE_TEST_SUITE_P(Inner128Outer4096, GemmQd8Qb4w2l_2vlx2vlTest,
     ::testing::Values(
         GemmShape2L{128, 128, 4096, 128, 4096},
         GemmShape2L{65, 17, 4096, 128, 4096}),

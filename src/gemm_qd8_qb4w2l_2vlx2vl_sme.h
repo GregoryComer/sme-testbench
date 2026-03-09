@@ -4,9 +4,9 @@
 
 namespace sme {
 
-GemmPackingParams gemm_qd8_qb4w2l_2vlxvl_packing_params();
+GemmPackingParams gemm_qd8_qb4w2l_2vlx2vl_packing_params();
 
-void gemm_qd8p_qb4w2lp_f32_2vlxvl_kernel(
+void gemm_qd8p_qb4w2lp_f32_2vlx2vl_kernel(
     const GemmParams& p,
     const void* lhs_packed,
     const void* rhs_packed,
