@@ -194,4 +194,35 @@ void gemm_qd8_qb4w_f32_reference(
     float* output,
     const BlockQuantParams& qp);
 
+// ---------- qd8×qb4w→f32 two-level block scales (int8 inner + f32 outer) ----
+// Two-level quantization where weights are scaled by int8 inner_scale per
+// inner block, with int32 accumulation within outer blocks, and f32 outer_scale
+// conversion deferred to the (less frequent) outer-block boundary.
+
+struct BlockQuantParams2L {
+  int8_t a_zero_point;
+  float a_scale;
+  size_t inner_group_size;   // e.g. 32, 128
+  size_t outer_group_size;   // e.g. 128..4096, must be multiple of inner
+  const int8_t* inner_scales;  // tile-packed: [N/tile_n][num_inner][tile_n]
+  const float* outer_scales;   // tile-packed: [N/tile_n][num_outer][tile_n]
+  const float* w_ksums;        // N elements, precomputed across all groups
+};
+
+GemmPackingParams gemm_qd8_qb4w2l_2vlxvl_packing_params();
+
+void gemm_qd8p_qb4w2lp_f32_2vlxvl(
+    const GemmParams& p,
+    const void* lhs_packed,
+    const void* rhs_packed,
+    float* out,
+    const BlockQuantParams2L& qp);
+
+void gemm_qd8_qb4w2l_f32_reference(
+    const GemmParams& p,
+    const int8_t* lhs,
+    const int8_t* rhs,
+    float* output,
+    const BlockQuantParams2L& qp);
+
 }  // namespace sme

@@ -329,6 +329,54 @@ void pack_group_scales(const float* scales, size_t num_groups, size_t N,
   }
 }
 
+// ---------- group scale tiling (int8) ----------------------------------------
+
+size_t packed_group_scales_s8_len(size_t num_groups, size_t N, size_t tile_n) {
+  size_t n_tiles = (N + tile_n - 1) / tile_n;
+  return n_tiles * num_groups * tile_n;
+}
+
+void pack_group_scales_s8(const int8_t* scales, size_t num_groups, size_t N,
+                           size_t tile_n, int8_t* out) {
+  size_t n_tiles = (N + tile_n - 1) / tile_n;
+  for (size_t nt = 0; nt < n_tiles; nt++) {
+    for (size_t g = 0; g < num_groups; g++) {
+      for (size_t no = 0; no < tile_n; no++) {
+        size_t n = nt * tile_n + no;
+        *out++ = (n < N) ? scales[g * N + n] : 0;
+      }
+    }
+  }
+}
+
+// ---------- 2-level ksums ----------------------------------------------------
+
+void compute_group_ksums_2level(const int8_t* data, size_t K, size_t N,
+    size_t inner_group_size, size_t outer_group_size,
+    const int8_t* inner_scales, const float* outer_scales,
+    float* out) {
+  size_t num_inner = (K + inner_group_size - 1) / inner_group_size;
+  size_t inner_per_outer = outer_group_size / inner_group_size;
+
+  for (size_t n = 0; n < N; n++) {
+    float total = 0.0f;
+    for (size_t ib = 0; ib < num_inner; ib++) {
+      size_t ob = ib / inner_per_outer;
+      size_t k_start = ib * inner_group_size;
+      size_t k_end = k_start + inner_group_size;
+      if (k_end > K) k_end = K;
+      int64_t block_sum = 0;
+      for (size_t k = k_start; k < k_end; k++) {
+        block_sum += data[k * N + n];
+      }
+      float effective_scale = outer_scales[ob * N + n] *
+                              static_cast<float>(inner_scales[ib * N + n]);
+      total += static_cast<float>(block_sum) * effective_scale;
+    }
+    out[n] = total;
+  }
+}
+
 // ---------- s4 (signed 4-bit, nibble-packed) ---------------------------------
 //
 // Packs signed 4-bit values into nibble pairs, tiled identically to the s8

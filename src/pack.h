@@ -83,6 +83,24 @@ size_t packed_group_scales_len(size_t num_groups, size_t N, size_t tile_n);
 void pack_group_scales(const float* scales, size_t num_groups, size_t N,
                        size_t tile_n, float* out);
 
+// ---------- group scale tiling (int8) ----------------------------------------
+// Like pack_group_scales but for int8 inner scales.
+
+size_t packed_group_scales_s8_len(size_t num_groups, size_t N, size_t tile_n);
+
+void pack_group_scales_s8(const int8_t* scales, size_t num_groups, size_t N,
+                           size_t tile_n, int8_t* out);
+
+// ---------- 2-level ksums ----------------------------------------------------
+// Precompute w_ksums for two-level block quantization:
+//   out[n] = sum_ob( outer_scale[ob*N+n] *
+//                sum_ib( inner_scale[ib*N+n] * sum_k_in_ib( w[k*N+n] ) ) )
+
+void compute_group_ksums_2level(const int8_t* data, size_t K, size_t N,
+    size_t inner_group_size, size_t outer_group_size,
+    const int8_t* inner_scales, const float* outer_scales,
+    float* out);
+
 // ---------- s4 (signed 4-bit, nibble-packed) ---------------------------------
 // Input is int8_t* with values in [-8, 7]. Output is nibble-packed tiled data.
 

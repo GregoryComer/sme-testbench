@@ -52,6 +52,11 @@ void gemm_qd8p_qb4wp_f32_2vlxvl_kernel(const GemmParams& p, const void* lhs_pack
 void gemm_qd8p_qb4wp_f32_2vlx2vl_f16mopa_kernel(const GemmParams& p, const void* lhs_packed,
                                                   const void* rhs_packed, float* out,
                                                   const BlockQuantParams& qp);
+
+// qb4w 2-level 2vlxvl (2x2 ZA tiles, pre-scaled weights)
+void gemm_qd8p_qb4w2lp_f32_2vlxvl_kernel(const GemmParams& p, const void* lhs_packed,
+                                           const void* rhs_packed, float* out,
+                                           const BlockQuantParams2L& qp);
 }
 
 namespace sme {
@@ -177,6 +182,16 @@ void gemm_qd8p_qb4wp_f32_2vlx2vl_f16mopa(const GemmParams& p, const void* lhs_pa
                                             const void* rhs_packed, float* out,
                                             const BlockQuantParams& qp) {
   gemm_qd8p_qb4wp_f32_2vlx2vl_f16mopa_kernel(p, lhs_packed, rhs_packed, out, qp);
+}
+
+// ---------- qb4w 2-level 2vlxvl (2x2 ZA tiles, pre-scaled weights) -----------
+
+void gemm_qd8p_qb4w2lp_f32_2vlxvl(const GemmParams& p, const void* lhs_packed,
+                                    const void* rhs_packed, float* out,
+                                    const BlockQuantParams2L& qp) {
+  asm volatile("smstart" ::: "memory");
+  gemm_qd8p_qb4w2lp_f32_2vlxvl_kernel(p, lhs_packed, rhs_packed, out, qp);
+  asm volatile("smstop" ::: "memory");
 }
 
 }  // namespace sme

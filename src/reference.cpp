@@ -87,4 +87,32 @@ void gemm_qd8_qb4w_f32_reference(const GemmParams& p, const int8_t* lhs,
   }
 }
 
+void gemm_qd8_qb4w2l_f32_reference(const GemmParams& p, const int8_t* lhs,
+                                    const int8_t* rhs, float* output,
+                                    const BlockQuantParams2L& qp) {
+  size_t num_inner = (p.K + qp.inner_group_size - 1) / qp.inner_group_size;
+  size_t inner_per_outer = qp.outer_group_size / qp.inner_group_size;
+  for (size_t m = 0; m < p.M; ++m) {
+    for (size_t n = 0; n < p.N; ++n) {
+      float acc = 0.0f;
+      for (size_t ib = 0; ib < num_inner; ++ib) {
+        size_t ob = ib / inner_per_outer;
+        size_t k_start = ib * qp.inner_group_size;
+        size_t k_end = k_start + qp.inner_group_size;
+        if (k_end > p.K) k_end = p.K;
+        int32_t block_acc = 0;
+        for (size_t k = k_start; k < k_end; ++k) {
+          block_acc += (static_cast<int32_t>(lhs[m * p.K + k]) -
+                        static_cast<int32_t>(qp.a_zero_point)) *
+                       static_cast<int32_t>(rhs[k * p.N + n]);
+        }
+        float effective_scale = qp.outer_scales[ob * p.N + n] *
+                                static_cast<float>(qp.inner_scales[ib * p.N + n]);
+        acc += effective_scale * static_cast<float>(block_acc);
+      }
+      output[m * p.N + n] = qp.a_scale * acc;
+    }
+  }
+}
+
 }  // namespace sme
